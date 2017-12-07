@@ -115,7 +115,7 @@ func pairs(config *Specials, input []byte) ([]*nameValue, error) {
 			case tokenEqual:
 				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), config.Separator())
 			case tokenString:
-				// assume new token is a expectName
+				// assume new token is a name
 				p = new(nameValue)
 				result = append(result, p)
 				p.Name = s // so far, could be name-value
