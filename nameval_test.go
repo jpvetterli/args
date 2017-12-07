@@ -62,7 +62,7 @@ var nvBadValuesTestData = []struct {
 func TestScannerWithGoodData(t *testing.T) {
 	scanner := newNamevalScanner(NewSpecials(""))
 	for _, data := range nvGoodTestData {
-		result, err := scanner.pairs([]byte(data.input))
+		result, err := scanner.Pairs([]byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -81,7 +81,7 @@ func TestScannerWithGoodData(t *testing.T) {
 func TestScannerWithGoodValuesData(t *testing.T) {
 	scanner := newNamevalScanner(NewSpecials(""))
 	for _, data := range nvGoodValuesTestData {
-		result, err := scanner.values([]byte(data.input))
+		result, err := scanner.Values([]byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -101,7 +101,7 @@ func TestScannerWithCustomData(t *testing.T) {
 	// ? Symbol prefix not used
 	scanner := newNamevalScanner(NewSpecials("?{}:!"))
 	for _, data := range nvCustomTestData {
-		result, err := scanner.pairs([]byte(data.input))
+		result, err := scanner.Pairs([]byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -120,7 +120,7 @@ func TestScannerWithCustomData(t *testing.T) {
 func TestScannerWithBadData(t *testing.T) {
 	scanner := newNamevalScanner(NewSpecials(""))
 	for _, data := range nvBadTestData {
-		result, err := scanner.pairs([]byte(data.input))
+		result, err := scanner.Pairs([]byte(data.input))
 		if err == nil {
 			if result != nil {
 				t.Errorf(`with "%s" error missing: "%s" unexpected result: "%s"`, data.input, data.expect, compact(result))
@@ -138,7 +138,7 @@ func TestScannerWithBadData(t *testing.T) {
 func TestScannerWithBadValuesData(t *testing.T) {
 	scanner := newNamevalScanner(NewSpecials(""))
 	for _, data := range nvBadValuesTestData {
-		result, err := scanner.values([]byte(data.input))
+		result, err := scanner.Values([]byte(data.input))
 		if err == nil {
 			if result != nil {
 				t.Errorf(`with "%s" error missing: "%s" unexpected result: "%s"`, data.input, data.expect, compactValues(result))
@@ -156,7 +156,11 @@ func TestScannerWithBadValuesData(t *testing.T) {
 func TestNameValues(t *testing.T) {
 	input := "d = f a=b a=c g h i D=[D is d's synonym] A = [A is a's synonym]"
 	scanner := newNamevalScanner(NewSpecials(""))
-	dict, list, err := scanner.Scan([]byte(input), map[string]string{"h": "h", "": "", "a": "a", "d": "d", "A": "a", "D": "d"})
+	result, err := scanner.Pairs([]byte(input))
+	if err != nil {
+		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
+	}
+	dict, list, err := scanner.Scan(result, map[string]string{"h": "h", "": "", "a": "a", "d": "d", "A": "a", "D": "d"})
 	if err != nil {
 		t.Errorf(`with "%s" unexpected error from NameValues: "%s"`, input, err.Error())
 	}
@@ -204,7 +208,11 @@ func TestRepeatedStandaloneNames(t *testing.T) {
 	expected := `standalone name "a" cannot be repeated`
 	input := "a a b" // b is okay if empty symbol defined
 	scanner := newNamevalScanner(NewSpecials(""))
-	_, _, err := scanner.Scan([]byte(input), map[string]string{"a": "a", "": ""})
+	result, err := scanner.Pairs([]byte(input))
+	if err != nil {
+		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
+	}
+	_, _, err = scanner.Scan(result, map[string]string{"a": "a", "": ""})
 	if err == nil {
 		t.Error("expected error missing")
 	} else {
@@ -215,7 +223,11 @@ func TestRepeatedStandaloneNames(t *testing.T) {
 
 	expected = `standalone name "A" (synonym of "a") cannot be repeated`
 	input = "a A b" // b is okay if empty symbol defined
-	_, _, err = scanner.Scan([]byte(input), map[string]string{"a": "a", "A": "a", "": ""})
+	result, err = scanner.Pairs([]byte(input))
+	if err != nil {
+		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
+	}
+	_, _, err = scanner.Scan(result, map[string]string{"a": "a", "A": "a", "": ""})
 	if err == nil {
 		t.Error("expected error missing")
 	} else {
@@ -226,7 +238,11 @@ func TestRepeatedStandaloneNames(t *testing.T) {
 
 	expected = `name "A" (synonym of "a") can only be repeated with values, but not standalone`
 	input = "a=x A b" // b is okay if empty symbol defined
-	_, _, err = scanner.Scan([]byte(input), map[string]string{"a": "a", "A": "a", "": ""})
+	result, err = scanner.Pairs([]byte(input))
+	if err != nil {
+		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
+	}
+	_, _, err = scanner.Scan(result, map[string]string{"a": "a", "A": "a", "": ""})
 	if err == nil {
 		t.Error("expected error missing")
 	} else {
@@ -237,7 +253,11 @@ func TestRepeatedStandaloneNames(t *testing.T) {
 
 	expected = `cannot add value "x" to standalone name "A" (synonym of "a")`
 	input = "a A=x b" // b is okay if empty symbol defined
-	_, _, err = scanner.Scan([]byte(input), map[string]string{"a": "a", "A": "a", "": ""})
+	result, err = scanner.Pairs([]byte(input))
+	if err != nil {
+		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
+	}
+	_, _, err = scanner.Scan(result, map[string]string{"a": "a", "A": "a", "": ""})
 	if err == nil {
 		t.Error("expected error missing")
 	} else {

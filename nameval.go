@@ -32,10 +32,10 @@ const (
 	expectValue                    // after seeing an equal
 )
 
-// Scan scans the input for name-value pairs and returns a list of
-// name-values (plural). The map keys are canonical names, as determined from
-// the synonyms map. All names must be present in the map, possibly with a value
-// equal to the key. A name missing from the map produces an error.
+// Scan scans a list of name-value pair (value singular) pairs and returns a
+// list of name-values (plural). The map keys are canonical names, as determined
+// from the synonyms map. All names must be present in the map, possibly with a
+// value equal to the key. A name missing from the map produces an error.
 //
 // The input may contain standalone values. Such values are assigned to the
 // empty name, unless the value exists as a key in synonyms. In this case, the
@@ -52,12 +52,8 @@ const (
 // the name in the input.
 //
 // When the function returns a non-nil error, the two other results are nil.
-func (nvs *namevalScanner) Scan(input []byte, synonyms map[string]string) (map[string][]string, [][]string, error) {
+func (nvs *namevalScanner) Scan(pairs []*nameValue, synonyms map[string]string) (map[string][]string, [][]string, error) {
 	// NOTE: length of map value/list element ([]string) is 1 <==> name is standalone
-	pairs, err := nvs.pairs(input)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	m := make(map[string][]string)
 	list := make([][]string, 0)
@@ -108,8 +104,8 @@ func (nvs *namevalScanner) Scan(input []byte, synonyms map[string]string) (map[s
 	return m, list, nil
 }
 
-// pairs returns a list of name-value pairs and standalone values found in the input.
-func (nvs *namevalScanner) pairs(input []byte) ([]*nameValue, error) {
+// Pairs returns a list of name-value Pairs and standalone values found in the input.
+func (nvs *namevalScanner) Pairs(input []byte) ([]*nameValue, error) {
 	result := make([]*nameValue, 0, 20)
 	t := newTokenizer(nvs.config)
 	t.Reset(input)
@@ -167,9 +163,9 @@ func (nvs *namevalScanner) pairs(input []byte) ([]*nameValue, error) {
 	}
 }
 
-// values returns a list of standalone values. An error is returned if the input
+// Values returns a list of standalone Values. An error is returned if the input
 // contains any name-value pair.
-func (nvs *namevalScanner) values(input []byte) ([]string, error) {
+func (nvs *namevalScanner) Values(input []byte) ([]string, error) {
 	result := make([]string, 0, 20)
 	t := newTokenizer(nvs.config)
 	t.Reset(input)
