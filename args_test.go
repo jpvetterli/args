@@ -3,11 +3,31 @@ package args
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"strconv"
 	"testing"
 	"time"
 )
+
+func TestSymbol(t *testing.T) {
+	a := NewParser(NewSpecials(""))
+	if s := a.symbol("$foo"); s != "foo" {
+		t.Errorf(`not "foo", but "%s"`, s)
+	}
+	if s := a.symbol("$$foo"); s != "" {
+		t.Errorf(`not "", but "%s"`, s)
+	}
+	if s := a.symbol("$$"); s != "" {
+		t.Errorf(`not "", but "%s"`, s)
+	}
+	if s := a.symbol("$"); s != "" {
+		t.Errorf(`not "", but "%s"`, s)
+	}
+	if s := a.symbol("aaa"); s != "" {
+		t.Errorf(`not "", but "%s"`, s)
+	}
+	if s := a.symbol(""); s != "" {
+		t.Errorf(`not "", but "%s"`, s)
+	}
+}
 
 func TestParamDuplicate(t *testing.T) {
 	a := NewParser(NewSpecials(""))
@@ -158,12 +178,13 @@ func TestArgsOptionalAndRepeatable(t *testing.T) {
 }
 
 func TestArgsTypesSingleValue(t *testing.T) {
+
 	a := NewParser(NewSpecials(""))
 	var x uint8
 	a.Def("x", &x)
 	if err := matchErrorMessage(
 		a.Parse("x= 1000"),
-		"Parse error on x: unsigned integer overflow on token 1000",
+		`Parse error on x: strconv.ParseUint: parsing "1000": value out of range`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -186,7 +207,7 @@ func TestArgsTypesMultiValue(t *testing.T) {
 	a.Def("x", &x)
 	if err := matchErrorMessage(
 		a.Parse("x= 1000"),
-		"Parse error on x: unsigned integer overflow on token 1000",
+		`Parse error on x: strconv.ParseUint: parsing "1000": value out of range`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -194,7 +215,8 @@ func TestArgsTypesMultiValue(t *testing.T) {
 	if err := matchResult(
 		a.Parse("x=255"),
 		func() error {
-			if x[0] != 255 {
+			// !?? go does NOT short circuit if len(x) tested directly: panic on x[0]
+			if nothing := len(x) == 0; nothing || x[0] != 255 {
 				return fmt.Errorf("x not 255, but %d", x)
 			}
 			return nil
@@ -295,7 +317,7 @@ func TestArgsTimeScanner(t *testing.T) {
 	defx := a.Def("x", &x)
 	if err := matchErrorMessage(
 		a.Parse("x= 1000"),
-		"Parse error on x: can't scan type: *time.Time",
+		`Parse error on x: target for value "1000" has unsupported type time.Time`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -503,101 +525,6 @@ func TestArgsCustomScannerSpecialCases(t *testing.T) {
 	t.Errorf("this statement should not have been executed (panic)")
 }
 
-// forty implements fmt.Scanner interface (Scan function)
-type forty int
-
-// Scan scans integers and verifies they are in [40,49]
-func (f *forty) Scan(state fmt.ScanState, _ rune) error {
-	chars := make([]rune, 0, 100)
-loop:
-	for {
-		c, _, err := state.ReadRune()
-		if err != nil {
-			if err == io.EOF {
-				break loop
-			}
-			return err
-		}
-		chars = append(chars, c)
-	}
-	i, err := strconv.Atoi(string(chars))
-	if err != nil {
-		return err
-	}
-	if i < 40 || i > 49 {
-		return fmt.Errorf("not a forty number: %d", i)
-	}
-	*f = forty(i)
-	return nil
-}
-
-func TestArgsScannerInterface(t *testing.T) {
-
-	a := NewParser(NewSpecials(""))
-	x := forty(0)
-	a.Def("x", &x).Opt()
-	if err := matchErrorMessage(
-		a.Parse("x=39"),
-		"Parse error on x: not a forty number: 39",
-	); err != nil {
-		t.Error(err.Error())
-	}
-
-	if err := matchErrorMessage(
-		a.Parse(""),
-		`Parse error on x: invalid default value: not a forty number: 0`,
-	); err != nil {
-		t.Error(err.Error())
-	}
-
-	if err := matchResult(
-		a.Parse("x=42"),
-		func() error {
-			if x != 42 {
-				return fmt.Errorf("not 42 (%d)", x)
-			}
-			return nil
-		}); err != nil {
-		t.Error(err.Error())
-	}
-
-	// NOTE: now the default value is 42, there should be no error
-
-	if err := matchResult(
-		a.Parse(""),
-		func() error {
-			if x != 42 {
-				return fmt.Errorf("not 42 (%d)", x)
-			}
-			return nil
-		}); err != nil {
-		t.Error(err.Error())
-	}
-
-	xs := make([]forty, 0)
-	a.Def("xs", &xs)
-	if err := matchResult(
-		a.Parse("xs=41 xs=42"),
-		func() error {
-			if len(xs) != 2 || xs[0] != 41 || xs[1] != 42 {
-				return fmt.Errorf("not [41 42], but %v", xs)
-			}
-			return nil
-		}); err != nil {
-		t.Error(err.Error())
-	}
-
-	xl := make([]forty, 2, 3)
-	a.Def("xl", &xl)
-	if err := matchErrorMessage(
-		a.Parse("xl=42"),
-		"Parse error on xl: invalid default value at offset 1: not a forty number: 0",
-	); err != nil {
-		t.Error(err.Error())
-	}
-
-}
-
 func TestArgsPrintDoc(t *testing.T) {
 	a := NewParser(NewSpecials(""))
 	err := setupTestArgsPrintDoc(a)
@@ -693,6 +620,37 @@ func setupTestArgsPrintDoc(a *Parser) (err error) {
 	a.Def("array", &ar).Doc("array is a parameter taking 4 values")
 	a.Def("undoc", &undoc).Aka("-u")
 	return
+}
+
+func TestSubsBasic(t *testing.T) {
+
+	var testData = []struct {
+		input  string
+		expect string
+	}{
+		{"$a=b $c=$$a foo=$$c", "b"},
+		{"$a=b $c=$$a foo=[ $$c ]", " b "},
+		{"$a=b $c=$$a foo=[ $$cx ]", " $$cx "},
+		{"$a=b $c=$$a foo=[ $$$c$x ]", " bx "},
+		{`$a=b $c=\$$a foo=$$c`, `\b`}, // escaping has no effect on symbols
+		{`$c=$$a foo=$$c`, `$$a`},
+	}
+
+	for _, data := range testData {
+		a := NewParser(NewSpecials(""))
+		foo := ""
+		a.Def("foo", &foo)
+		if err := matchResult(
+			a.Parse(data.input),
+			func() error {
+				if foo != data.expect {
+					return fmt.Errorf(`input: "%s" result: "%s" expect: "%s"`, data.input, foo, data.expect)
+				}
+				return nil
+			}); err != nil {
+			t.Error(err.Error())
+		}
+	}
 }
 
 // panicHandler triggers a testing error if panic message differs from expected

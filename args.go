@@ -15,21 +15,25 @@ import (
 // Parser methods are used to define, parse, and document command line
 // parameters.
 type Parser struct {
-	custom *Specials // nil for standard marks
-	params map[string]*Param
-	seq    []string // names in definition sequence
-	doc    []string
-	vars   map[interface{}]bool // duplicate detection
+	custom  *Specials // nil for standard marks
+	params  map[string]*Param
+	seq     []string // names in definition sequence
+	doc     []string
+	targets map[interface{}]bool // duplicate detection
+	symbols map[string]string
+	subst   substituter
 }
 
 // NewParser returns a Parser with a configuration of special characters.
 func NewParser(configuration *Specials) *Parser {
 	return &Parser{
-		custom: configuration,
-		params: make(map[string]*Param),
-		seq:    make([]string, 0),
-		doc:    make([]string, 0),
-		vars:   make(map[interface{}]bool),
+		custom:  configuration,
+		params:  make(map[string]*Param),
+		seq:     make([]string, 0),
+		doc:     make([]string, 0),
+		targets: make(map[interface{}]bool),
+		symbols: make(map[string]string),
+		subst:   *newSubstituter(configuration.SymbolPrefix()),
 	}
 }
 
@@ -62,13 +66,13 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	if _, ok := a.params[name]; ok {
 		panic(fmt.Errorf(`parameter "%s" already defined`, name))
 	}
-	if _, ok := a.vars[target]; ok {
+	if _, ok := a.targets[target]; ok {
 		panic(fmt.Errorf(`target for parameter "%s" is already assigned`, name))
 	}
 
 	p := Param{dict: a, name: name, target: target}
 	a.params[name] = &p
-	a.vars[target] = true
+	a.targets[target] = true
 	a.seq = append(a.seq, name)
 	return &p
 }
@@ -85,7 +89,7 @@ func (a *Parser) Parse(s string) error {
 		}
 	}
 
-	namevals, err := pairs(a.custom, []byte(s))
+	namevals, err := a.extractAndResolveNameValues([]byte(s))
 	if err != nil {
 		return err
 	}
@@ -228,10 +232,10 @@ func (p *Param) Doc(s ...string) *Param {
 }
 
 // Scan sets a function to scan one parameter value into the target. When no
-// function is provided, values are scanned with fmt.Sscan, which supports all
-// basic types as well as types implementing fmt.Scanner. When a target is an
-// array or slice, each value is scanned separately into corresponding elements
-// of the target.
+// function is provided, values are scanned with a builtin function, which
+// supports all the same basic types as the Parse* functions of the strconv
+// package. When a target is an array or slice, each value is scanned separately
+// into corresponding elements of the target.
 func (p *Param) Scan(f func(string, interface{}) error) *Param {
 	p.scan = f
 	return p
@@ -254,6 +258,95 @@ func (p *Param) Split(regex string) *Param {
 }
 
 // helpers
+
+// extractAndResolveNameValues does like its name says
+func (a *Parser) extractAndResolveNameValues(input []byte) ([]*nameValue, error) {
+
+	namevals, err := pairs(a.custom, input)
+	if err != nil {
+		return nil, err
+	}
+
+	namevals, err = a.resolve(namevals)
+	if err != nil {
+		return nil, err
+	}
+	return namevals, nil
+}
+
+// resolve substitutes symbol references in names and values.  If a name is a
+// symbol, it is entered into the variables map of the Parser.
+//
+// There is special handling if a standalone values is modified by resolution:
+// the result is interpreted again, recursively, since it could contain one or
+// more name-value pairs. This allows to use symbols as macros.
+// This behavior is limited to standalone values.
+//
+// An important detail is that unresolved symbol references are not considered
+// an error at this step; they are simply passed along verbatim to the output.
+func (a *Parser) resolve(namevals []*nameValue) ([]*nameValue, error) {
+	result := make([]*nameValue, 0, cap(namevals))
+	for _, nv := range namevals {
+		if len(nv.Name) > 0 {
+
+			name, _, _, err := a.subst.Substitute([]byte(nv.Name), &a.symbols)
+			if err != nil {
+				return nil, err
+			}
+
+			value, _, _, err := a.subst.Substitute([]byte(nv.Value), &a.symbols)
+			if err != nil {
+				return nil, err
+			}
+
+			sym := a.symbol(string(name))
+			if len(sym) > 0 {
+				// enter symbol into table only if absent ("first wins")
+				if _, ok := a.symbols[sym]; !ok {
+					a.symbols[sym] = string(value)
+				}
+			} else {
+				result = append(result, &nameValue{Name: string(name), Value: string(value)})
+			}
+		} else {
+			// resolve the standalone value, maybe recursively
+			value, rcount, _, err := a.subst.Substitute([]byte(nv.Value), &a.symbols)
+			if err != nil {
+				return nil, err
+			}
+			if rcount > 0 {
+				// something changed, this could be a "macro", recurse
+				namevals1, err := a.extractAndResolveNameValues(value)
+				if err != nil {
+					return nil, err
+				}
+				for _, nv1 := range namevals1 {
+					result = append(result, nv1)
+				}
+			} else {
+				result = append(result, nv)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// symbol returns a symbol if the input corresponds to a symbol, else it returns an empty string.
+// The input must start with exactly one symbol prefix and must be longer than 1.
+//
+// Examples (with the symbol prefix $):
+// 	for "$foo" returns "foo"
+//	for "$$foo" returns ""
+//	for "$"	returns "" (there is no empty symbol)
+func (a *Parser) symbol(s string) string {
+	if len(s) > 1 && strings.IndexRune(s, a.custom.SymbolPrefix()) == 0 {
+		if sym := s[1:]; strings.IndexRune(sym, a.custom.SymbolPrefix()) != 0 {
+			return sym
+		}
+	}
+	return ""
+}
 
 // synonyms is a helper for Parse.
 func (a *Parser) synonyms() map[string]string {
@@ -342,18 +435,13 @@ func splitValues(p *Param, values []string) []string {
 	return splitted
 }
 
-// scanFunc is a helper for Parse.
-// It returns the relevant scanning function.
+// scanFunc returns the scan function configured in Param if any else the
+// builtin Scan function.
 func scanFunc(p Param) func(string, interface{}) error {
 	if p.scan != nil {
-		// user has passed a custom scanner
 		return p.scan
 	}
-	// use fmt.Sscan, user can customize by implementing fmt.Scanner interface
-	return func(input string, target interface{}) error {
-		_, err := fmt.Sscan(input, target)
-		return err
-	}
+	return Scan
 }
 
 // verifyNotSeen is a help for Parse.
@@ -455,12 +543,4 @@ func reflElementAddr(i int, v reflect.Value) interface{} {
 // reflElement returns i-th element using reflection
 func reflElement(i int, v reflect.Value) interface{} {
 	return v.Index(i).Interface()
-}
-
-// reflImplementsScanner returns true if Scanner interface implemented
-func reflImplementsScanner(target interface{}) bool {
-	v := reflect.ValueOf(target)
-	scannerType := reflect.TypeOf((*fmt.Scanner)(nil)).Elem()
-	res := v.Type().Implements(scannerType)
-	return res
 }
