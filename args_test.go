@@ -37,6 +37,13 @@ func TestParamDuplicate(t *testing.T) {
 	a.Def("a", &i)
 }
 
+func TestReservedPrefix(t *testing.T) {
+	a := NewParser(NewSpecials(""))
+	defer panicHandler(`"$a" cannot be used as parameter name or alias because it starts with the symbol prefix`, t)
+	i := 1
+	a.Def("$a", &i)
+}
+
 func TestParamDuplicateAlias(t *testing.T) {
 	a := NewParser(NewSpecials(""))
 	defer panicHandler(`synonym "A" clashes with an existing parameter name or synonym`, t)

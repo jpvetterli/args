@@ -69,6 +69,9 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	if _, ok := a.targets[target]; ok {
 		panic(fmt.Errorf(`target for parameter "%s" is already assigned`, name))
 	}
+	if err := a.validate(name); err != nil {
+		panic(err)
+	}
 
 	p := Param{dict: a, name: name, target: target}
 	a.params[name] = &p
@@ -208,6 +211,9 @@ func (p *Param) Aka(alias string) *Param {
 	if _, ok := p.dict.params[alias]; ok {
 		panic(fmt.Errorf(`synonym "%s" clashes with an existing parameter name or synonym`, alias))
 	}
+	if err := p.dict.validate(alias); err != nil {
+		panic(err)
+	}
 	p.dict.params[alias] = p
 	p.dict.seq = append(p.dict.seq, alias)
 	return p
@@ -332,8 +338,9 @@ func (a *Parser) resolve(namevals []*nameValue) ([]*nameValue, error) {
 	return result, nil
 }
 
-// symbol returns a symbol if the input corresponds to a symbol, else it returns an empty string.
-// The input must start with exactly one symbol prefix and must be longer than 1.
+// symbol returns a symbol if the input corresponds to a symbol, else it returns
+// an empty string. The input must start with exactly one symbol prefix and must
+// be longer than 1. It must also be a valid name.
 //
 // Examples (with the symbol prefix $):
 // 	for "$foo" returns "foo"
@@ -346,6 +353,14 @@ func (a *Parser) symbol(s string) string {
 		}
 	}
 	return ""
+}
+
+// validate verifies a name (no symbol prefix allowed)
+func (a *Parser) validate(name string) error {
+	if strings.IndexRune(name, a.custom.SymbolPrefix()) == 0 {
+		return fmt.Errorf(`"%s" cannot be used as parameter name or alias because it starts with the symbol prefix`, name)
+	}
+	return nil
 }
 
 // synonyms is a helper for Parse.

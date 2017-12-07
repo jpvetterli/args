@@ -22,6 +22,9 @@ var nvGoodTestData = []struct {
 	{"[a [b] c]", "<a [b] c> "},
 	{`[a b\] c]`, "<a b] c> "},
 	{`[a \[b c]`, "<a [b c> "},
+	{`[a b] = x`, "<a b>=<x> "}, // funny names
+	{`[a \]b] = x`, "<a ]b>=<x> "},
+	{`$[ a \]b] = x`, "<$ a ]b>=<x> "},
 }
 
 var nvCustomTestData = []struct {
