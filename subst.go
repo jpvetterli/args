@@ -67,13 +67,17 @@ const (
 )
 
 // Substitute returns the input with all occurences of symbols found in the
-// symbols map replaced with their values. Symbols not found in the map are
-// ignored. The syntax is documented in the NewSubstituter function. When the
-// method returns a non-nil error, the output reflects what was done up to the
-// point of error. The input is never modified.
-func (subst *substituter) Substitute(input []byte, symbols *map[string]string) ([]byte, error) {
+// symbols map replaced with their values. It also returns the number of symbols
+// found and resolved, and the number of symbols found but unresolved. Symbols
+// not found in the map are left as is.  When the method returns a non-nil
+// error, the output reflects what was done up to the point of error. The input
+// is never modified. The syntax is explained in details in the package
+// documentation.
+func (subst *substituter) Substitute(input []byte, symbols *map[string]string) ([]byte, int, int, error) {
 	s := newScannerState(input, subst)
 	var resolved bytes.Buffer
+	rcount := 0
+	ucount := 0
 	end := false
 	for !end {
 		status, err := s.scan()
@@ -81,7 +85,7 @@ func (subst *substituter) Substitute(input []byte, symbols *map[string]string) (
 			if s.beforePos < nextPos(s.input) {
 				resolved.Write(input[s.beforePos:nextPos(s.input)])
 			}
-			return resolved.Bytes(), err
+			return resolved.Bytes(), rcount, ucount, err
 		}
 		switch status {
 		case 0:
@@ -91,9 +95,11 @@ func (subst *substituter) Substitute(input []byte, symbols *map[string]string) (
 			// append resolved symbol or restore original
 			sym := input[s.symbolPos:nextPos(s.input)]
 			if rsym, ok := (*symbols)[string(sym)]; ok {
+				rcount++
 				resolved.WriteString(rsym)
 			} else {
 				// restore
+				ucount++
 				resolved.WriteRune(s.marker)
 				resolved.WriteRune(s.marker)
 				resolved.Write(sym)
@@ -106,9 +112,11 @@ func (subst *substituter) Substitute(input []byte, symbols *map[string]string) (
 			// append resolved symbol or restore original
 			sym := input[s.symbolPos : nextPos(s.input)-1*s.markerLen]
 			if rsym, ok := (*symbols)[string(sym)]; ok {
+				rcount++
 				resolved.WriteString(rsym)
 			} else {
 				// restore
+				ucount++
 				resolved.WriteRune(s.marker)
 				resolved.WriteRune(s.marker)
 				resolved.WriteRune(s.marker)
@@ -130,7 +138,7 @@ func (subst *substituter) Substitute(input []byte, symbols *map[string]string) (
 			panic("bug found: unexpected value returned by scan()")
 		}
 	}
-	return resolved.Bytes(), nil
+	return resolved.Bytes(), rcount, ucount, nil
 }
 
 // scan the input for symbols. Return 0 to continue, 1 when when

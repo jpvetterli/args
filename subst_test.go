@@ -51,6 +51,20 @@ var testData1 = []struct {
 	{"⌘⌘foo 日本語 ⌘⌘-日-本_語", "ba⌘r 日本語 nihongo <日本語>"},
 }
 
+var testCount = []struct {
+	input  string
+	rcount int
+	ucount int
+}{
+	{"", 0, 0},
+	{"foo", 0, 0},
+	{"$$foo", 1, 0},
+	{"$$bar", 0, 1},
+	{"$$foo yes $$foo $$bar $$foo $$foo $$foo $$bar $$bar $$bar ", 5, 4},
+	{"$$$foo$$$$foo$no$$$bar$$$$foo$$$$foo$", 4, 1},
+	{"$$$foo$ whatever $$1magic $$$-日-本_語$@!)", 3, 0},
+}
+
 // some symbols
 var symbols = &map[string]string{
 	"foo":    "ba⌘r",
@@ -61,7 +75,7 @@ var symbols = &map[string]string{
 
 func TestSubstOnData(t *testing.T) {
 	for _, c := range testData {
-		result, _ := newSubstituter('$').Substitute([]byte(c.input), symbols)
+		result, _, _, _ := newSubstituter('$').Substitute([]byte(c.input), symbols)
 		if string(result) != c.expect {
 			t.Errorf("Substitute(%q) == %q, expect: %q", c.input, result, c.expect)
 		}
@@ -70,7 +84,7 @@ func TestSubstOnData(t *testing.T) {
 
 func TestSubstOnData1(t *testing.T) {
 	for _, c := range testData1 {
-		result, _ := newSubstituter('⌘').Substitute([]byte(c.input), symbols)
+		result, _, _, _ := newSubstituter('⌘').Substitute([]byte(c.input), symbols)
 		if string(result) != c.expect {
 			t.Errorf("Substitute(%q) == %q, expect: %q", c.input, result, c.expect)
 		}
@@ -80,7 +94,7 @@ func TestSubstOnData1(t *testing.T) {
 func TestSubstWithAsciiMarker(t *testing.T) {
 	input := "@@foo"
 	expect := "ba⌘r"
-	result, _ := newSubstituter('@').Substitute([]byte(input), symbols)
+	result, _, _, _ := newSubstituter('@').Substitute([]byte(input), symbols)
 	if string(result) != expect {
 		t.Errorf("Substitute(%q) == %q, expect: %q", input, result, expect)
 	}
@@ -89,7 +103,7 @@ func TestSubstWithAsciiMarker(t *testing.T) {
 func TestSubstWithMultiByteDataAndSymbols(t *testing.T) {
 	input := "⌘⌘foo 日本語 ⌘⌘日本語"
 	expect := "ba⌘r 日本語 nihongo <日本語>"
-	result, _ := newSubstituter('⌘').Substitute([]byte(input), &map[string]string{
+	result, _, _, _ := newSubstituter('⌘').Substitute([]byte(input), &map[string]string{
 		"foo": "ba⌘r",
 		"日本語": "nihongo <日本語>",
 	})
@@ -101,7 +115,7 @@ func TestSubstWithMultiByteDataAndSymbols(t *testing.T) {
 func TestError(t *testing.T) {
 	input := "$$foo $$bar\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98 etc."
 	expect := "ba⌘r $$bar"
-	result, err := newSubstituter('$').Substitute([]byte(input), symbols)
+	result, _, _, err := newSubstituter('$').Substitute([]byte(input), symbols)
 	if string(result) != expect {
 		t.Errorf("Substitute(%q) == %q, expect: %q", input, result, expect)
 	}
@@ -119,7 +133,7 @@ func TestError(t *testing.T) {
 func TestErrorLoose(t *testing.T) {
 	input := "$$foo $$bar\xbd\xb2\x3d\xbc\x20\xe2\x8c\x98 etc."
 	expect := "ba⌘r $$bar\xbd\xb2=\xbc ⌘ etc."
-	result, err := newLooseSubstituter('$').Substitute([]byte(input), symbols)
+	result, _, _, err := newLooseSubstituter('$').Substitute([]byte(input), symbols)
 	if string(result) != expect {
 		t.Errorf("Substitute(%q) == %q, expect: %q", input, result, expect)
 	}
@@ -133,7 +147,7 @@ func TestByteOrderMarkError(t *testing.T) {
 	// BOM invalid unless first character
 	input := "\uFEFF$$foo bar\uFEFF\uFEFF\uFEFF etc."
 	expect := "" // if BOM as 1st char allowed: "ba⌘r bar"
-	result, err := newSubstituter('$').Substitute([]byte(input), symbols)
+	result, _, _, err := newSubstituter('$').Substitute([]byte(input), symbols)
 	if string(result) != expect {
 		t.Errorf("Substitute(%q) == %q, expect: %q", input, result, expect)
 	}
@@ -153,12 +167,21 @@ func TestByteOrderMarkError(t *testing.T) {
 func TestByteOrderMarkErrorLoose(t *testing.T) {
 	input := "\uFEFF$$foo bar\uFEFF\uFEFF\uFEFF etc."
 	expect := "\ufeffba⌘r bar\ufeff\ufeff\ufeff etc."
-	result, err := newLooseSubstituter('$').Substitute([]byte(input), symbols)
+	result, _, _, err := newLooseSubstituter('$').Substitute([]byte(input), symbols)
 	if string(result) != expect {
 		t.Errorf("Substitute(%q) == %q, expect: %q", input, result, expect)
 	}
 	if err != nil {
 		t.Errorf("No error expected")
 		return
+	}
+}
+
+func TestSubstOnCountData(t *testing.T) {
+	for _, c := range testCount {
+		_, rcount, ucount, _ := newSubstituter('$').Substitute([]byte(c.input), symbols)
+		if rcount != c.rcount || ucount != c.ucount {
+			t.Errorf("Substitute(%q), r/u == %d/%d, expected: %d/%d", c.input, rcount, ucount, c.rcount, c.ucount)
+		}
 	}
 }
