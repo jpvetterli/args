@@ -12,18 +12,6 @@ type nameValue struct {
 	Value string
 }
 
-// newNamevalScanner returns a NameValueScanner implementation
-// where special characters can be customized.
-func newNamevalScanner(config *Specials) *namevalScanner {
-	return &namevalScanner{config: config}
-}
-
-// namevalScanner holds the special character configuration and provides the
-// Scan method.
-type namevalScanner struct {
-	config *Specials
-}
-
 type expectState uint8
 
 const (
@@ -32,27 +20,28 @@ const (
 	expectValue                    // after seeing an equal
 )
 
-// Scan scans a list of name-value pair (value singular) pairs and returns a
-// list of name-values (plural). The map keys are canonical names, as determined
-// from the synonyms map. All names must be present in the map, possibly with a
-// value equal to the key. A name missing from the map produces an error.
+// regroup takes a list of name-value pairs (value singular) and returns a map
+// and a list of name-values (plural).
 //
-// The input may contain standalone values. Such values are assigned to the
+// Each map and list value is a list of strings with at least 1 element, the
+// canonical name of the parameter, followed by all values for this parameter,
+// in specification order.  The list is ordered by first occurence of the name
+// in the input.
+//
+// The map is keyed by canonical name. Canonical names are determined from the
+// synonyms map. All names must be present in the map, possibly with a value
+// equal to the key. A name missing from the map produces an error.
+//
+// A standalone value is found when a name-value pair has an empty name (an
+// empty value is a value just like any other). Such values are assigned to the
 // empty name, unless the value exists as a key in synonyms. In this case, the
 // standalone value is interpreted as a standalone name. There can be only at
 // most one occurence of a given standalone name. Otherwise an error ocurs.
 // (Standalone names are provided to support implicitly true boolean
-// parameters.)
-//
-// Each value is a string slice with the canonical name followed by all values
-// for that name in specification order. All standalone values are collected
-// under the empty name. The value for a standalone name is the  name itself.
-//
-// All map values are also returned as a list ordered by first occurence of
-// the name in the input.
+// parameters, also known as keywords.)
 //
 // When the function returns a non-nil error, the two other results are nil.
-func (nvs *namevalScanner) Scan(pairs []*nameValue, synonyms map[string]string) (map[string][]string, [][]string, error) {
+func regroup(pairs []*nameValue, synonyms map[string]string) (map[string][]string, [][]string, error) {
 	// NOTE: length of map value/list element ([]string) is 1 <==> name is standalone
 
 	m := make(map[string][]string)
@@ -104,10 +93,11 @@ func (nvs *namevalScanner) Scan(pairs []*nameValue, synonyms map[string]string) 
 	return m, list, nil
 }
 
-// Pairs returns a list of name-value Pairs and standalone values found in the input.
-func (nvs *namevalScanner) Pairs(input []byte) ([]*nameValue, error) {
+// pairs returns a list of name-value pairs and standalone values found in the
+// input, using  the given configuration of special characters.
+func pairs(config *Specials, input []byte) ([]*nameValue, error) {
 	result := make([]*nameValue, 0, 20)
-	t := newTokenizer(nvs.config)
+	t := newTokenizer(config)
 	t.Reset(input)
 	state := expectName
 	var p *nameValue
@@ -123,7 +113,7 @@ func (nvs *namevalScanner) Pairs(input []byte) ([]*nameValue, error) {
 			case tokenEnd:
 				return result, nil
 			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), nvs.config.Separator())
+				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), config.Separator())
 			case tokenString:
 				// assume new token is a expectName
 				p = new(nameValue)
@@ -154,7 +144,7 @@ func (nvs *namevalScanner) Pairs(input []byte) ([]*nameValue, error) {
 			case tokenEnd:
 				return nil, fmt.Errorf(`at "%s": premature end of input`, t.ErrorContext())
 			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), nvs.config.Separator())
+				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), config.Separator())
 			case tokenString:
 				p.Value = s
 				state = expectName
@@ -163,11 +153,12 @@ func (nvs *namevalScanner) Pairs(input []byte) ([]*nameValue, error) {
 	}
 }
 
-// Values returns a list of standalone Values. An error is returned if the input
-// contains any name-value pair.
-func (nvs *namevalScanner) Values(input []byte) ([]string, error) {
+// values returns a list of standalone values, using the given configuration of
+// special characters. An error is returned if the input contains any name-value
+// pair.
+func values(config *Specials, input []byte) ([]string, error) {
 	result := make([]string, 0, 20)
-	t := newTokenizer(nvs.config)
+	t := newTokenizer(config)
 	t.Reset(input)
 	for {
 		token, s, err := t.Next()

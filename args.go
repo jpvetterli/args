@@ -85,14 +85,12 @@ func (a *Parser) Parse(s string) error {
 		}
 	}
 
-	nvs := newNamevalScanner(a.custom)
-
-	pairs, err := nvs.Pairs([]byte(s))
+	namevals, err := pairs(a.custom, []byte(s))
 	if err != nil {
 		return err
 	}
 
-	_, list, err := nvs.Scan(pairs, a.synonyms())
+	_, list, err := regroup(namevals, a.synonyms())
 	if err != nil {
 		return err
 	}
