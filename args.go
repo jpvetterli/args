@@ -97,7 +97,7 @@ func (a *Parser) Parse(s string) error {
 		return err
 	}
 
-	_, list, err := regroup(namevals, a.synonyms())
+	_, list, err := normalize(namevals, a.synonyms())
 	if err != nil {
 		return err
 	}
@@ -426,11 +426,8 @@ func parseValues(p *Param, values []string) error {
 			}
 		}
 	default:
-		if len(values) != 1 {
-			err = fmt.Errorf("%d values specified, but only one expected", len(values))
-		} else {
-			err = scanfunc(values[0], p.target)
-		}
+		// if too many values specified, the last wins
+		err = scanfunc(values[len(values)-1], p.target)
 	}
 	if err != nil {
 		err = decorate(err, p.name)
@@ -438,14 +435,24 @@ func parseValues(p *Param, values []string) error {
 	return err
 }
 
-// splitValues is a helper for Parse.
+// splitValues splits values around a splitter regular expression.
+// It returns the input if the parameter has no splitter.
+// When there is no splitter, multiple values can only be appended
+// and there is no way to remove values already specified.
+// When there is a splitter, the last value wins.
+//
+// Example
+// 	a=1 a=2 a=3	a has 3 values: [1 2 3] (no splitter)
+// 	a=1:2:3		a has 3 values: [1 2 3] (splits on :)
+//	a=1:2:3 a=4:5	a has 2 values: [4 5] (splits on :)
 func splitValues(p *Param, values []string) []string {
 	if p.splitter == nil {
 		return values
 	}
-	splitted := make([]string, 0, len(values))
+	// repeated values are appended but with a splitter the last wins
+	var splitted []string
 	for _, value := range values {
-		splitted = append(splitted, p.splitter.Split(value, -1)...)
+		splitted = p.splitter.Split(value, -1)
 	}
 	return splitted
 }

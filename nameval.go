@@ -20,13 +20,13 @@ const (
 	expectValue                    // after seeing an equal
 )
 
-// regroup takes a list of name-value pairs (value singular) and returns a map
+// normalize takes a list of name-value pairs (value singular) and returns a map
 // and a list of name-values (plural).
 //
-// Each map and list value is a list of strings with at least 1 element, the
+// Each map and list value is a list of strings with at least 2 elements, the
 // canonical name of the parameter, followed by all values for this parameter,
 // in specification order.  The list is ordered by first occurence of the name
-// in the input.
+// in the input. When a standalone name is found, its value is set to "true".
 //
 // The map is keyed by canonical name. Canonical names are determined from the
 // synonyms map. All names must be present in the map, possibly with a value
@@ -35,55 +35,41 @@ const (
 // A standalone value is found when a name-value pair has an empty name (an
 // empty value is a value just like any other). Such values are assigned to the
 // empty name, unless the value exists as a key in synonyms. In this case, the
-// standalone value is interpreted as a standalone name. There can be only at
-// most one occurence of a given standalone name. Otherwise an error ocurs.
-// (Standalone names are provided to support implicitly true boolean
-// parameters, also known as keywords.)
+// standalone value is interpreted as a standalone name.  (Standalone names
+// support implicitly true boolean parameters, also known as keywords.)
 //
 // When the function returns a non-nil error, the two other results are nil.
-func regroup(pairs []*nameValue, synonyms map[string]string) (map[string][]string, [][]string, error) {
+func normalize(pairs []*nameValue, synonyms map[string]string) (map[string][]string, [][]string, error) {
 	// NOTE: length of map value/list element ([]string) is 1 <==> name is standalone
 
 	m := make(map[string][]string)
 	list := make([][]string, 0)
 	for _, nv := range pairs {
-		isStandalone, canonical := standaloneName(nv, synonyms)
-		if isStandalone {
-			// at most one standalone name allowed for a given name
-			if v, ok := m[canonical]; ok {
-				if len(v) == 1 {
-					return nil, nil, fmt.Errorf(`standalone name %s cannot be repeated`, reportName(nv.Value, canonical))
-				}
-				return nil, nil, fmt.Errorf(`name %s can only be repeated with values, but not standalone`, reportName(nv.Value, canonical))
+		if standaloneName(nv, synonyms) {
+			nv.Name = nv.Value
+			nv.Value = "true"
+		}
+		canonical, ok := synonyms[nv.Name]
+		if !ok {
+			if len(nv.Name) == 0 {
+				return nil, nil, fmt.Errorf(`standalone value %q rejected (empty name not defined)`, nv.Value)
 			}
-			v := make([]string, 1)
+			return nil, nil, fmt.Errorf(`name "%s" not defined`, nv.Name)
+		}
+		v, ok := m[canonical]
+		if !ok {
+			// name not seen yet
+			v = make([]string, 2)
 			v[0] = canonical
+			v[1] = nv.Value
 			m[canonical] = v
 			list = append(list, v)
 		} else {
-			// not a standalone name
-			canonical, ok := synonyms[nv.Name]
-			if !ok {
-				if len(nv.Name) == 0 {
-					return nil, nil, fmt.Errorf(`standalone value %q rejected (empty name not defined)`, nv.Value)
-				}
-				return nil, nil, fmt.Errorf(`name "%s" not defined`, nv.Name)
+			// name repeated, make sure it is not a standalone name
+			if len(v) == 1 {
+				return nil, nil, fmt.Errorf(`cannot add value "%s" to standalone name %s`, nv.Value, reportName(nv.Name, canonical))
 			}
-			v, ok := m[canonical]
-			if !ok {
-				// name not seen yet
-				v = make([]string, 2)
-				v[0] = canonical
-				v[1] = nv.Value
-				m[canonical] = v
-				list = append(list, v)
-			} else {
-				// name repeated, make sure it is not a standalone name
-				if len(v) == 1 {
-					return nil, nil, fmt.Errorf(`cannot add value "%s" to standalone name %s`, nv.Value, reportName(nv.Name, canonical))
-				}
-				m[canonical] = append(v, nv.Value)
-			}
+			m[canonical] = append(v, nv.Value)
 		}
 	}
 	// list values are the canonical only, update with final values from map
@@ -176,16 +162,13 @@ func values(config *Specials, input []byte) ([]string, error) {
 	}
 }
 
-// standaloneName returns true and the canonical name if nv contains
-// a standalone name
-func standaloneName(nv *nameValue, synonyms map[string]string) (bool, string) {
+// standaloneName returns true if nv contains a standalone name
+func standaloneName(nv *nameValue, synonyms map[string]string) bool {
 	if len(nv.Name) == 0 {
-		if canonical, ok := synonyms[nv.Value]; ok {
-			return ok, canonical
-		}
-		return false, ""
+		_, ok := synonyms[nv.Value]
+		return ok
 	}
-	return false, ""
+	return false
 }
 
 // reportName generates string to report name clearly in error messages

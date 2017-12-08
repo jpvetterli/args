@@ -156,7 +156,7 @@ func TestNameValues(t *testing.T) {
 	if err != nil {
 		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
 	}
-	dict, list, err := regroup(result, map[string]string{"h": "h", "": "", "a": "a", "d": "d", "A": "a", "D": "d"})
+	dict, list, err := normalize(result, map[string]string{"h": "h", "": "", "a": "a", "d": "d", "A": "a", "D": "d"})
 	if err != nil {
 		t.Errorf(`with "%s" unexpected error from NameValues: "%s"`, input, err.Error())
 	}
@@ -190,9 +190,10 @@ func TestNameValues(t *testing.T) {
 	if d == nil || len(d) != 3 || d[0] != "d" || d[1] != "f" || d[2] != "D is d's synonym" {
 		t.Errorf(`with "%s", something wrong with "d"`, input)
 	}
+	// h is a standalone name, so its value must have been set to "true"
 	h := dict["h"]
-	if h == nil || len(h) != 1 || h[0] != "h" {
-		t.Errorf(`with "%s", something wrong with "h"`, input)
+	if h == nil || len(h) != 2 || h[0] != "h" || h[1] != "true" {
+		t.Errorf(`with "%s", something wrong with "h" dict: "%v"`, input, dict)
 	}
 	anon := dict[""]
 	if anon == nil || len(anon) != 3 || anon[0] != "" || anon[1] != "g" || anon[2] != "i" {
@@ -201,65 +202,35 @@ func TestNameValues(t *testing.T) {
 }
 
 func TestRepeatedStandaloneNames(t *testing.T) {
-	expected := `standalone name "a" cannot be repeated`
 	input := "a a b" // b is okay if empty symbol defined
-	result, err := pairs(NewSpecials(""), []byte(input))
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
-	}
-	_, _, err = regroup(result, map[string]string{"a": "a", "": ""})
-	if err == nil {
-		t.Error("expected error missing")
-	} else {
-		if err.Error() != expected {
-			t.Errorf(`error %q differs from expected %q`, err.Error(), expected)
+	value1 := "true"
+
+	test := func() {
+		result, err := pairs(NewSpecials(""), []byte(input))
+		if err != nil {
+			t.Errorf(`with "%s" unexpected error from pairs: "%s"`, input, err.Error())
+		}
+		_, list, err := normalize(result, map[string]string{"a": "a", "A": "a", "": ""})
+		if err != nil {
+			t.Errorf(`unexpected error: "%s"`, err.Error())
+		} else {
+			if len(list) != 2 || len(list[0]) != 3 || list[0][0] != "a" || list[0][1] != value1 || list[0][2] != "true" {
+				t.Errorf(`unexpected result: %v`, list)
+			}
 		}
 	}
 
-	expected = `standalone name "A" (synonym of "a") cannot be repeated`
-	input = "a A b" // b is okay if empty symbol defined
-	result, err = pairs(NewSpecials(""), []byte(input))
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
-	}
-	_, _, err = regroup(result, map[string]string{"a": "a", "A": "a", "": ""})
-	if err == nil {
-		t.Error("expected error missing")
-	} else {
-		if err.Error() != expected {
-			t.Errorf(`error %q differs from expected %q`, err.Error(), expected)
-		}
-	}
+	test()
 
-	expected = `name "A" (synonym of "a") can only be repeated with values, but not standalone`
-	input = "a=x A b" // b is okay if empty symbol defined
-	result, err = pairs(NewSpecials(""), []byte(input))
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
-	}
-	_, _, err = regroup(result, map[string]string{"a": "a", "A": "a", "": ""})
-	if err == nil {
-		t.Error("expected error missing")
-	} else {
-		if err.Error() != expected {
-			t.Errorf(`error %q differs from expected %q`, err.Error(), expected)
-		}
-	}
+	input = "a A b"
+	test()
 
-	expected = `cannot add value "x" to standalone name "A" (synonym of "a")`
-	input = "a A=x b" // b is okay if empty symbol defined
-	result, err = pairs(NewSpecials(""), []byte(input))
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
-	}
-	_, _, err = regroup(result, map[string]string{"a": "a", "A": "a", "": ""})
-	if err == nil {
-		t.Error("expected error missing")
-	} else {
-		if err.Error() != expected {
-			t.Errorf(`error %q differs from expected %q`, err.Error(), expected)
-		}
-	}
+	input = "a=x A b"
+	value1 = "x"
+	test()
+
+	input = "A=x a b"
+	test()
 
 }
 

@@ -206,6 +206,18 @@ func TestArgsTypesSingleValue(t *testing.T) {
 		}); err != nil {
 		t.Error(err.Error())
 	}
+
+	// the last wins
+	if err := matchResult(
+		a.Parse("x=255 x=100"),
+		func() error {
+			if x != 100 {
+				return fmt.Errorf("x not 100, but %d", x)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
 }
 
 func TestArgsTypesMultiValue(t *testing.T) {
@@ -266,9 +278,24 @@ func TestArgsSplit(t *testing.T) {
 	a.Def("y", &y).Split(`\s*[\s:,;]\s*`)
 
 	if err := matchResult(
-		a.Parse("y=[a : b:c] y=[foo bar] y=[1, 2; 3]"),
+		a.Parse("y=[a : :c]"),
 		func() error {
-			if len(y) != 8 || y[2] != "c" || y[4] != "bar" || y[7] != "3" {
+			if len(y) != 3 || y[0] != "a" || y[1] != "" || y[2] != "c" {
+				return fmt.Errorf("unexpected values: %v", y)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	// the last wins
+	a = NewParser(NewSpecials(""))
+	y = make([]string, 0)
+	a.Def("y", &y).Split(`\s*[\s:,;]\s*`)
+	if err := matchResult(
+		a.Parse("y=[a:b:c] y=[1:2]"),
+		func() error {
+			if len(y) != 2 || y[0] != "1" || y[1] != "2" {
 				return fmt.Errorf("unexpected values: %v", y)
 			}
 			return nil
@@ -305,17 +332,19 @@ func TestArgsStandalone(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	// the last wins
 	foo = false
-	if err := matchErrorMessage(
-		a.Parse("foo FOO"),
-		`standalone name "FOO" (synonym of "foo") cannot be repeated`,
-	); err != nil {
+	if err := matchResult(
+		a.Parse("FOO foo foo=false foo"),
+		func() error {
+			if !foo {
+				return fmt.Errorf("bool parameter not set")
+			}
+			return nil
+		}); err != nil {
 		t.Error(err.Error())
 	}
 
-	if foo {
-		t.Errorf("bool parameter should not have been set")
-	}
 }
 
 func TestArgsTimeScanner(t *testing.T) {
@@ -388,9 +417,10 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	// the last wins, even if the value is wrong
 	if err := matchErrorMessage(
-		a.Parse("s=a s = b"),
-		"Parse error on s: 2 values specified, but only one expected",
+		a.Parse("s=a s=foo s = b"),
+		`Parse error on s: fooBarScanner error: "b", expecting "foo" or "bar"`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -639,8 +669,12 @@ func TestSubsBasic(t *testing.T) {
 		{"$a=b $c=$$a foo=[ $$c ]", " b "},
 		{"$a=b $c=$$a foo=[ $$cx ]", " $$cx "},
 		{"$a=b $c=$$a foo=[ $$$c$x ]", " bx "},
-		{`$a=b $c=\$$a foo=$$c`, `\b`}, // escaping has no effect on symbols
+		// escaping has no effect on symbols:
+		{`$a=b $c=\$$a foo=$$c`, `\b`},
 		{`$c=$$a foo=$$c`, `$$a`},
+		// first wins:
+		{"$a=b $a=x $c=$$a foo=$$c", "b"},
+		{"$VAR=w3 foo=[n=a pd=$$VAR cn=[svc = $$VAR] co=2]", "n=a pd=w3 cn=[svc = w3] co=2"},
 	}
 
 	for _, data := range testData {
