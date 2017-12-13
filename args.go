@@ -20,20 +20,22 @@ type Parser struct {
 	seq     []string // names in definition sequence
 	doc     []string
 	targets map[interface{}]bool // duplicate detection
-	symbols map[string]string
-	subst   substituter
+	symbols symtab
 }
 
 // NewParser returns a Parser with a configuration of special characters.
+// A default is used if configuration is nil.
 func NewParser(configuration *Specials) *Parser {
+	if configuration == nil {
+		configuration = NewSpecials("")
+	}
 	return &Parser{
 		custom:  configuration,
 		params:  make(map[string]*Param),
 		seq:     make([]string, 0),
 		doc:     make([]string, 0),
 		targets: make(map[interface{}]bool),
-		symbols: make(map[string]string),
-		subst:   *newSubstituter(configuration.SymbolPrefix()),
+		symbols: newSymtab(configuration.SymbolPrefix()),
 	}
 }
 
@@ -51,7 +53,7 @@ func NewParser(configuration *Specials) *Parser {
 //  }
 //
 // When target points to an array, the parameter takes a number of values
-// exaclty equal to the length. When target points to a slice, it takes a number
+// exactly equal to the length. When target points to a slice, it takes a number
 // of values not exceeding its capacity, unless the capacity is zero, which is
 // interpreted as no limit. Panics if name is already used. Panics if target is
 // not a pointer. It is the only Parser function which can panic (except for
@@ -72,8 +74,18 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	if err := a.validate(name); err != nil {
 		panic(err)
 	}
-
 	p := Param{dict: a, name: name, target: target}
+
+	v := reflValue(target)
+	switch v.Kind() {
+	case reflect.Array:
+		p.limit = v.Len()
+	case reflect.Slice:
+		p.limit = v.Cap()
+	default:
+		p.limit = 1
+	}
+
 	a.params[name] = &p
 	a.targets[target] = true
 	a.seq = append(a.seq, name)
@@ -84,41 +96,123 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 // there is an error. Values are scanned and the targets passed to Def are set.
 // The input syntax is explained in the package documentation.
 func (a *Parser) Parse(s string) error {
-
-	seen := make(map[string]int)
-	for n, v := range a.params {
-		if n == v.name {
-			seen[n] = 0
-		}
-	}
-
-	namevals, err := a.extractAndResolveNameValues([]byte(s))
+	err := a.parse(s)
 	if err != nil {
 		return err
 	}
+	return a.verify()
+}
 
-	_, list, err := normalize(namevals, a.synonyms())
+// parse parses s. It can be used recursively.
+func (a *Parser) parse(s string) error {
+
+	// build list of name-value pairs
+	namevals, e := pairs(a.custom, []byte(s))
+	if e != nil {
+		return e
+	}
+
+loop:
+	for _, nv := range namevals {
+
+		if len(nv.Name) == 0 {
+			recursive, err := a.parseSingleton(nv)
+			if err != nil {
+				return err
+			}
+			if recursive {
+				err = a.parse(nv.Value)
+				if err != nil {
+					return err
+				}
+				continue loop
+			}
+		} else {
+			err := a.parsePair(nv)
+			if err != nil {
+				return err
+			}
+		}
+
+		// if a symbol definition add to symbol table
+		if !a.symbols.put(nv.Name, nv.Value) {
+			// not a symbol, parse parameter value, taking care of count and limit
+			if p, ok := a.params[nv.Name]; ok {
+				err := p.parseValues(p.split(nv.Value))
+				if err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf(`parameter not defined: "%s"`, nv.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// parseSingleton parses nv with an empty name and returns true to request
+// recursive parsing.
+func (a *Parser) parseSingleton(nv *nameValue) (bool, error) {
+	symv, modified, err := substitute(nv.Value, &a.symbols)
+	if err != nil {
+		return false, err
+	}
+	switch {
+
+	// standalone name
+	case symv.resolved && func() bool { _, ok := a.params[symv.s]; return ok }():
+		nv.Name, nv.Value = symv.s, "true"
+
+	// resolved value could be a "subroutine"
+	case modified:
+		nv.Value = symv.s
+		return true, nil
+
+	// actual standalone value
+	default:
+		p, ok := a.params[""]
+		if !ok {
+			return false, fmt.Errorf(`unexpected standalone value: "%s"`, nv.Value)
+		}
+		if !p.verbatim {
+			if !symv.resolved {
+				return false, fmt.Errorf(`cannot resolve standalone value "%s"`, nv.Value)
+			}
+			nv.Value = symv.s
+		} // else leave verbatim value
+
+	}
+	return false, nil
+}
+
+// parsePair parses nv with a non-empty name.
+func (a *Parser) parsePair(nv *nameValue) error {
+	symv, _, err := substitute(nv.Name, &a.symbols)
 	if err != nil {
 		return err
 	}
+	if !symv.resolved {
+		return fmt.Errorf(`cannot resolve name in "%s %c %s"`, nv.Name, a.custom.Separator(), nv.Value)
+	}
+	nv.Name = symv.s
 
-	for _, nv := range list {
-		name := nv[0]
-		switch len(nv) {
-		case 1:
-			seen[name] = 1
-			err = parseStandaloneName(a.params[name])
-		default:
-			seen[name] += len(nv) - 1
-			p := a.params[name]
-			err = parseValues(p, splitValues(p, nv[1:]))
-		}
+	p, ok := a.params[nv.Name]
+	if ok {
+		symv, _, err = substitute(nv.Value, &a.symbols)
 		if err != nil {
-			return err
+			return decorate(err, nv.Name)
 		}
+		if !symv.resolved {
+			if !p.verbatim {
+				return fmt.Errorf(`cannot resolve value in "%s %c %s"`, nv.Name, a.custom.Separator(), nv.Value)
+			}
+		}
+		nv.Value = symv.s
 	}
+	// else: do not resolve value if not a parameter (either a symbol or a wrong name)
 
-	return a.verifyNotSeen(seen)
+	return nil
 }
 
 // ParseStrings is a wrapper for Parse, which is passed all arguments joined
@@ -148,8 +242,8 @@ func (a *Parser) PrintDoc(w io.Writer) {
 		switch value.Kind() {
 		case reflect.Slice:
 			typ = typ.Elem()
-			if c := value.Cap(); c > 0 {
-				details = fmt.Sprintf(", 0-%d value%s", c, plural(c))
+			if p.limit > 0 {
+				details = fmt.Sprintf(", 0-%d value%s", p.limit, plural(p.limit))
 			} else {
 				details = ", any number of values"
 			}
@@ -158,10 +252,10 @@ func (a *Parser) PrintDoc(w io.Writer) {
 			}
 		case reflect.Array:
 			typ = typ.Elem()
-			details = fmt.Sprintf(", exactly %d value%s", value.Len(), plural(value.Len()))
+			details = fmt.Sprintf(", exactly %d value%s", p.limit, plural(p.limit))
 		default:
 			// scalar
-			if p.opt {
+			if p.limit == 0 {
 				details = fmt.Sprintf(", optional (default: %v)", value)
 			}
 		}
@@ -199,7 +293,9 @@ func (a *Parser) PrintDoc(w io.Writer) {
 type Param struct {
 	dict     *Parser
 	name     string // the canonical name
-	opt      bool
+	limit    int    // limit for number of values (array: exact, slice: max unless 0, scalar: 0 for opt)
+	count    int    // actual number of values seen
+	verbatim bool
 	target   interface{}
 	scan     func(value string, target interface{}) error
 	splitter *regexp.Regexp
@@ -227,7 +323,35 @@ func (p *Param) Opt() *Param {
 	if reflLen(p.target) >= 0 {
 		panic(fmt.Errorf(`parameter "%s" is multi-valued and cannot be optional (hint: use a slice with length 0 instead)`, p.name))
 	}
-	p.opt = true
+	p.limit = 0
+	return p
+}
+
+// Verbatim indicates that the parameter value can contain unresolved symbol
+// references. Only parameters with a target pointing to a string can be
+// specified as verbatim. Panics if the target does not point to a string.
+func (p *Param) Verbatim() *Param {
+	ok := true
+
+	v := reflValue(p.target)
+
+	switch v.Kind() {
+	case reflect.String:
+	case reflect.Array:
+		ok = v.Type().Elem().Kind() == reflect.String
+	case reflect.Slice:
+		ok = v.Type().Elem().Kind() == reflect.String
+	default:
+		ok = false
+	}
+	if !ok {
+		what := "anonymous parameter"
+		if len(p.name) > 0 {
+			what = `parameter "` + p.name + `"`
+		}
+		panic(fmt.Errorf(`%s cannot be verbatim because its target of type %v cannot take a string`, what, reflect.TypeOf(p.target)))
+	}
+	p.verbatim = true
 	return p
 }
 
@@ -241,7 +365,8 @@ func (p *Param) Doc(s ...string) *Param {
 // function is provided, values are scanned with a builtin function, which
 // supports all the same basic types as the Parse* functions of the strconv
 // package. When a target is an array or slice, each value is scanned separately
-// into corresponding elements of the target.
+// into corresponding elements of the target. When a custom scanner function is
+// configured, any unset initial value is scanned to ensure agreement.
 func (p *Param) Scan(f func(string, interface{}) error) *Param {
 	p.scan = f
 	return p
@@ -265,96 +390,6 @@ func (p *Param) Split(regex string) *Param {
 
 // helpers
 
-// extractAndResolveNameValues does like its name says
-func (a *Parser) extractAndResolveNameValues(input []byte) ([]*nameValue, error) {
-
-	namevals, err := pairs(a.custom, input)
-	if err != nil {
-		return nil, err
-	}
-
-	namevals, err = a.resolve(namevals)
-	if err != nil {
-		return nil, err
-	}
-	return namevals, nil
-}
-
-// resolve substitutes symbol references in names and values.  If a name is a
-// symbol, it is entered into the variables map of the Parser.
-//
-// There is special handling if a standalone values is modified by resolution:
-// the result is interpreted again, recursively, since it could contain one or
-// more name-value pairs. This allows to use symbols as macros.
-// This behavior is limited to standalone values.
-//
-// An important detail is that unresolved symbol references are not considered
-// an error at this step; they are simply passed along verbatim to the output.
-func (a *Parser) resolve(namevals []*nameValue) ([]*nameValue, error) {
-	result := make([]*nameValue, 0, cap(namevals))
-	for _, nv := range namevals {
-		if len(nv.Name) > 0 {
-
-			name, _, _, err := a.subst.Substitute([]byte(nv.Name), &a.symbols)
-			if err != nil {
-				return nil, err
-			}
-
-			value, _, _, err := a.subst.Substitute([]byte(nv.Value), &a.symbols)
-			if err != nil {
-				return nil, err
-			}
-
-			sym := a.symbol(string(name))
-			if len(sym) > 0 {
-				// enter symbol into table only if absent ("first wins")
-				if _, ok := a.symbols[sym]; !ok {
-					a.symbols[sym] = string(value)
-				}
-			} else {
-				result = append(result, &nameValue{Name: string(name), Value: string(value)})
-			}
-		} else {
-			// resolve the standalone value, maybe recursively
-			value, rcount, _, err := a.subst.Substitute([]byte(nv.Value), &a.symbols)
-			if err != nil {
-				return nil, err
-			}
-			if rcount > 0 {
-				// something changed, this could be a "macro", recurse
-				namevals1, err := a.extractAndResolveNameValues(value)
-				if err != nil {
-					return nil, err
-				}
-				for _, nv1 := range namevals1 {
-					result = append(result, nv1)
-				}
-			} else {
-				result = append(result, nv)
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// symbol returns a symbol if the input corresponds to a symbol, else it returns
-// an empty string. The input must start with exactly one symbol prefix and must
-// be longer than 1. It must also be a valid name.
-//
-// Examples (with the symbol prefix $):
-// 	for "$foo" returns "foo"
-//	for "$$foo" returns ""
-//	for "$"	returns "" (there is no empty symbol)
-func (a *Parser) symbol(s string) string {
-	if len(s) > 1 && strings.IndexRune(s, a.custom.SymbolPrefix()) == 0 {
-		if sym := s[1:]; strings.IndexRune(sym, a.custom.SymbolPrefix()) != 0 {
-			return sym
-		}
-	}
-	return ""
-}
-
 // validate verifies a name (no symbol prefix allowed)
 func (a *Parser) validate(name string) error {
 	if strings.IndexRune(name, a.custom.SymbolPrefix()) == 0 {
@@ -363,56 +398,37 @@ func (a *Parser) validate(name string) error {
 	return nil
 }
 
-// synonyms is a helper for Parse.
-func (a *Parser) synonyms() map[string]string {
-	s := make(map[string]string)
-	for n, p := range a.params {
-		s[n] = p.name
-	}
-	return s
-}
-
-// parseStandaloneName is a helper for Parse.
-func parseStandaloneName(p *Param) error {
-	// target must be a bool
-	if v := reflValue(p.target); v.Kind() == reflect.Bool {
-		v.SetBool(true)
-		return nil
-	}
-	return fmt.Errorf(`Parse error on %s: not bool`, p.name)
-}
-
-// parseValues is a helper for Parse.
-func parseValues(p *Param, values []string) error {
+// parseValues converts values and assigns them to targets
+func (p *Param) parseValues(values []string) error {
 	var err error
 	count := len(values)
-	scanfunc := scanFunc(*p)
 	v := reflValue(p.target)
 	switch v.Kind() {
 	case reflect.Array:
-		// check: number of values must agree with array len
-		if count != v.Len() {
-			err = fmt.Errorf("%d value%s specified, but exactly %d expected", count, plural(count), v.Len())
+		total := count + p.count
+		if total > p.limit {
+			err = fmt.Errorf("too many values specified, expected %d", p.limit)
 		} else {
 			// scan all values
 			for i, value := range values {
-				if err = scanfunc(value, reflElementAddr(i, v)); err != nil {
+				if err = p.assign(value, reflElementAddr(p.count+i, v)); err != nil {
 					break
 				}
 			}
+			p.count = total
 		}
 	case reflect.Slice:
-		// check: number of values must agree with slice len and cap unless both 0
+		total := count + p.count
 		switch {
-		case v.Len() == 0 && v.Cap() == 0:
+		case p.limit == 0:
 			// any number of values is okay
-		case count > v.Cap():
-			err = fmt.Errorf("%d value%s specified, at most %d expected", count, plural(count), v.Cap())
+		case total > p.limit:
+			err = fmt.Errorf("%d value%s specified, at most %d expected", total, plural(total), p.limit)
 		}
 		if err == nil {
-			if count > v.Len() {
+			if total > v.Len() {
 				// grow the slice
-				s := reflect.MakeSlice(v.Type(), count, count)
+				s := reflect.MakeSlice(v.Type(), total, total)
 				// no need to copy since no way to skip over existing values
 				// do it anyway in just in case (e.g. extract values by splitting and skipping)
 				reflect.Copy(s, v)
@@ -420,14 +436,16 @@ func parseValues(p *Param, values []string) error {
 			}
 			// scan all values
 			for i, value := range values {
-				if err = scanfunc(value, reflElementAddr(i, v)); err != nil {
+				if err = p.assign(value, reflElementAddr(p.count+i, v)); err != nil {
 					break
 				}
 			}
+			p.count = total
 		}
 	default:
 		// if too many values specified, the last wins
-		err = scanfunc(values[len(values)-1], p.target)
+		err = p.assign(values[len(values)-1], p.target)
+		p.count++
 	}
 	if err != nil {
 		err = decorate(err, p.name)
@@ -435,65 +453,58 @@ func parseValues(p *Param, values []string) error {
 	return err
 }
 
-// splitValues splits values around a splitter regular expression.
-// It returns the input if the parameter has no splitter.
-// When there is no splitter, multiple values can only be appended
-// and there is no way to remove values already specified.
-// When there is a splitter, the last value wins.
-//
-// Example
-// 	a=1 a=2 a=3	a has 3 values: [1 2 3] (no splitter)
-// 	a=1:2:3		a has 3 values: [1 2 3] (splits on :)
-//	a=1:2:3 a=4:5	a has 2 values: [4 5] (splits on :)
-func splitValues(p *Param, values []string) []string {
+// split splits value around a splitter regular expression. It returns the input
+// if the parameter has no splitter.
+func (p *Param) split(value string) []string {
 	if p.splitter == nil {
-		return values
+		return []string{value}
 	}
-	// repeated values are appended but with a splitter the last wins
-	var splitted []string
-	for _, value := range values {
-		splitted = p.splitter.Split(value, -1)
-	}
-	return splitted
+	return p.splitter.Split(value, -1)
 }
 
-// scanFunc returns the scan function configured in Param if any else the
-// builtin Scan function.
-func scanFunc(p Param) func(string, interface{}) error {
+// assign converts value and assigns it to target. It does it with a custom
+// scanner if defined for the parameter.
+func (p *Param) assign(value string, target interface{}) error {
 	if p.scan != nil {
-		return p.scan
+		return p.scan(value, target)
 	}
-	return Scan
+	return Scan(value, target)
 }
 
-// verifyNotSeen is a help for Parse.
-// It verifies that omitted parameters can be omitted and that
-// default values of omitted parameters are valid.
-func (a *Parser) verifyNotSeen(seen map[string]int) error {
-	for n, count := range seen {
-		p := a.params[n]
-		value := reflValue(p.target)
-		switch value.Kind() {
-		case reflect.Slice:
-			for i := count; i < reflLen(p.target); i++ {
-				// scan remaining initial values to ensure they are okay
-				if e := scanFunc(*p)(fmt.Sprint(reflElement(i, value)), reflCopy(reflElementAddr(i, value))); e != nil {
-					return decorate(fmt.Errorf("invalid default value at offset %d: %v", i, e), n)
+// verify verifies that omitted parameters can be omitted and that default
+// values of omitted parameters are valid.
+func (a *Parser) verify() error {
+	for n, p := range a.params {
+		if n == p.name {
+			value := reflValue(p.target)
+			switch value.Kind() {
+			case reflect.Slice:
+				for i := p.count; i < reflLen(p.target); i++ {
+					if p.scan != nil {
+						// scan remaining initial values to ensure they are okay
+						e := p.scan(fmt.Sprint(reflElement(i, value)), reflCopy(reflElementAddr(i, value)))
+						if e != nil {
+							return decorate(fmt.Errorf("invalid default value at offset %d: %v", i, e), n)
+						}
+					}
 				}
-			}
-		case reflect.Array:
-			if count != reflLen(p.target) {
-				return decorate(fmt.Errorf("%d value%s expected but only %d specified", reflLen(p.target), plural(reflLen(p.target)), count), n)
-			}
-		default:
-			// single-valued parameter
-			if count < 1 {
-				if !p.opt {
-					return decorate(fmt.Errorf("mandatory parameter not set"), n)
+			case reflect.Array:
+				if p.count != p.limit {
+					return decorate(fmt.Errorf("%d value%s specified but exactly %d expected", p.count, plural(p.count), p.limit), n)
 				}
-				// scan initial value (into a copy) to ensure it's okay
-				if e := scanFunc(*p)(fmt.Sprint(value), reflCopy(p.target)); e != nil {
-					return decorate(fmt.Errorf("invalid default value: %v", e), n)
+			default:
+				// single-valued parameter
+				if p.count < 1 {
+					if p.limit != 0 {
+						return decorate(fmt.Errorf("mandatory parameter not set"), n)
+					}
+					// scan initial value (into a copy) to ensure it's okay
+					if p.scan != nil {
+						e := p.scan(fmt.Sprint(value), reflCopy(p.target))
+						if e != nil {
+							return decorate(fmt.Errorf("invalid default value: %v", e), n)
+						}
+					}
 				}
 			}
 		}
@@ -519,7 +530,7 @@ func buildSynonyms(a *Parser) map[string]string {
 	return synonyms
 }
 
-// decorate improves error messages.
+// decorate adds name information to error messages.
 func decorate(err error, name string) error {
 	if len(name) == 0 {
 		name = "anonymous parameter"
@@ -547,22 +558,23 @@ func reflLen(target interface{}) int {
 	return -1
 }
 
-// reflValue returns value using reflection
+// reflValue returns the value of target using reflection
 func reflValue(target interface{}) reflect.Value {
 	return reflect.Indirect(reflect.ValueOf(target))
 }
 
-// reflCopy returns new copy using reflection
+// reflCopy returns a new copy of target using reflection
 func reflCopy(target interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(target).Elem()).Interface()
 }
 
-// reflElementAddr returns address of i-th element using reflection
+// reflElementAddr returns the address of the i-th element of target using
+// reflection
 func reflElementAddr(i int, v reflect.Value) interface{} {
 	return v.Index(i).Addr().Interface()
 }
 
-// reflElement returns i-th element using reflection
+// reflElement returns the i-th element of target using reflection
 func reflElement(i int, v reflect.Value) interface{} {
 	return v.Index(i).Interface()
 }

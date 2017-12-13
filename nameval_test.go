@@ -2,7 +2,6 @@ package args
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 )
 
@@ -148,90 +147,6 @@ func TestScannerWithBadValuesData(t *testing.T) {
 			t.Errorf(`with "%s" error: "%s" expected: "%s"`, data.input, err.Error(), data.expect)
 		}
 	}
-}
-
-func TestNameValues(t *testing.T) {
-	input := "d = f a=b a=c g h i D=[D is d's synonym] A = [A is a's synonym]"
-	result, err := pairs(NewSpecials(""), []byte(input))
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from Pairs: "%s"`, input, err.Error())
-	}
-	dict, list, err := normalize(result, map[string]string{"h": "h", "": "", "a": "a", "d": "d", "A": "a", "D": "d"})
-	if err != nil {
-		t.Errorf(`with "%s" unexpected error from NameValues: "%s"`, input, err.Error())
-	}
-	if len(list) != 4 {
-		t.Errorf(`with "%s", the list does not have 3 values`, input)
-	}
-	if list[0][0] != "d" || list[1][0] != "a" || list[2][0] != "" {
-		t.Errorf(`with "%s", the list elements are not in the expected sequence`, input)
-	}
-	if !reflect.DeepEqual(dict["d"], list[0]) {
-		t.Errorf(`with "%s", the map and list values for "d" are not identical`, input)
-	}
-	if !reflect.DeepEqual(dict["a"], list[1]) {
-		t.Errorf(`with "%s", the map and list values for "a" are not identical`, input)
-	}
-	if !reflect.DeepEqual(dict[""], list[2]) {
-		t.Errorf(`with "%s", the map and list values for the anonymous entry are not identical`, input)
-	}
-
-	a := dict["a"]
-	if a == nil {
-		t.Errorf(`with "%s", "a" not found in name-value map`, input)
-	}
-	if len(a) != 4 {
-		t.Errorf(`with "%s", "a" does not have two values`, input)
-	}
-	if a[0] != "a" || a[1] != "b" || a[2] != "c" || a[3] != "A is a's synonym" {
-		t.Errorf(`with "%s", "a" does has wrong values`, input)
-	}
-	d := dict["d"]
-	if d == nil || len(d) != 3 || d[0] != "d" || d[1] != "f" || d[2] != "D is d's synonym" {
-		t.Errorf(`with "%s", something wrong with "d"`, input)
-	}
-	// h is a standalone name, so its value must have been set to "true"
-	h := dict["h"]
-	if h == nil || len(h) != 2 || h[0] != "h" || h[1] != "true" {
-		t.Errorf(`with "%s", something wrong with "h" dict: "%v"`, input, dict)
-	}
-	anon := dict[""]
-	if anon == nil || len(anon) != 3 || anon[0] != "" || anon[1] != "g" || anon[2] != "i" {
-		t.Errorf(`with "%s", something wrong with standalone values`, input)
-	}
-}
-
-func TestRepeatedStandaloneNames(t *testing.T) {
-	input := "a a b" // b is okay if empty symbol defined
-	value1 := "true"
-
-	test := func() {
-		result, err := pairs(NewSpecials(""), []byte(input))
-		if err != nil {
-			t.Errorf(`with "%s" unexpected error from pairs: "%s"`, input, err.Error())
-		}
-		_, list, err := normalize(result, map[string]string{"a": "a", "A": "a", "": ""})
-		if err != nil {
-			t.Errorf(`unexpected error: "%s"`, err.Error())
-		} else {
-			if len(list) != 2 || len(list[0]) != 3 || list[0][0] != "a" || list[0][1] != value1 || list[0][2] != "true" {
-				t.Errorf(`unexpected result: %v`, list)
-			}
-		}
-	}
-
-	test()
-
-	input = "a A b"
-	test()
-
-	input = "a=x A b"
-	value1 = "x"
-	test()
-
-	input = "A=x a b"
-	test()
-
 }
 
 func compact(pairs []*nameValue) string {

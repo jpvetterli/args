@@ -1,26 +1,28 @@
-package args
+package args_test
 
 import (
 	"testing"
+
+	"github.com/jpvetterli/args"
 )
 
 func TestNewSpecialsPanic1(t *testing.T) {
 	defer panicHandler(`expected 5 distinct special characters and not: this is too long`, t)
-	NewSpecials(`this is too long`)
+	args.NewSpecials(`this is too long`)
 }
 
-func TestNewSpecialsPanic2(t *testing.T) {
+func TestNewSpecialPanic2(t *testing.T) {
 	defer panicHandler(`expected 5 distinct special characters and not: @"":\`, t)
-	NewSpecials(`@"":\`)
+	args.NewSpecials(`@"":\`)
 }
 
 func TestNewSpecialsPanic3(t *testing.T) {
 	defer panicHandler(`expected 5 distinct special characters and not: @:\`, t)
-	NewSpecials(`@:\`)
+	args.NewSpecials(`@:\`)
 }
 
 func TestNewSpecialsEmpty(t *testing.T) {
-	s := NewSpecials("")
+	s := args.NewSpecials("")
 	if s.SymbolPrefix() != '$' ||
 		s.LeftQuote() != '[' ||
 		s.RightQuote() != ']' ||
@@ -31,7 +33,7 @@ func TestNewSpecialsEmpty(t *testing.T) {
 }
 
 func TestNewSpecialsCustom(t *testing.T) {
-	s := NewSpecials("@<>:\\")
+	s := args.NewSpecials("@<>:\\")
 	if s.SymbolPrefix() != '@' ||
 		s.LeftQuote() != '<' ||
 		s.RightQuote() != '>' ||
@@ -42,7 +44,7 @@ func TestNewSpecialsCustom(t *testing.T) {
 }
 
 func TestRawSpecials(t *testing.T) {
-	s := Specials{}
+	s := args.Specials{}
 	if s.SymbolPrefix() != '$' ||
 		s.LeftQuote() != '[' ||
 		s.RightQuote() != ']' ||

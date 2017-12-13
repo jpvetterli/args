@@ -7,29 +7,9 @@ import (
 	"unicode/utf8"
 )
 
-// newSubstituter returns a substituter using the given symbol prefix.
-func newSubstituter(symPrefix rune) *substituter {
-	return &substituter{marker: symPrefix}
-}
-
-// newLooseSubstituter returns a substituter using the given symbol prefix and
-// running in loose mode. In loose mode invalid characters are passed through
-// untouched.
-func newLooseSubstituter(symPrefix rune) *substituter {
-	return &substituter{marker: symPrefix, loose: true}
-}
-
-// substituter provides a method for substituting variables. Variables are
-// marked by a special prefix character. Refer to the package documentation for
-// details and examples.
-type substituter struct {
-	marker rune // symbol marker, typically $
-	loose  bool // ignore character validity
-}
-
 // scannerState keeps track of work in progress
 type scannerState struct {
-	gigo       bool // garbage in garbage out
+	gigo       bool // garbage in garbage out (accept invalid Unicode)
 	marker     rune
 	markerLen  int
 	input      *bytes.Reader
@@ -42,12 +22,10 @@ func nextPos(r *bytes.Reader) int {
 	return int(r.Size()) - r.Len()
 }
 
-// scannerState constructor
-func newScannerState(input []byte, s *substituter) scannerState {
+func newScannerState(input []byte, prefix rune) scannerState {
 	return scannerState{
-		gigo:      s.loose,
-		marker:    s.marker,
-		markerLen: len(string(s.marker)),
+		marker:    prefix,
+		markerLen: len(string(prefix)),
 		input:     bytes.NewReader(input),
 	}
 }
@@ -66,71 +44,82 @@ const (
 	smsEnd
 )
 
-// Substitute returns the input with all occurences of symbols found in the
-// symbols map replaced with their values. It also returns the number of symbols
-// found and resolved, and the number of symbols found but unresolved. Symbols
-// not found in the map are left as is.  When the method returns a non-nil
-// error, the output reflects what was done up to the point of error. The input
-// is never modified. The syntax is explained in details in the package
-// documentation.
-func (subst *substituter) Substitute(input []byte, symbols *map[string]string) ([]byte, int, int, error) {
-	s := newScannerState(input, subst)
+// substitute replaces all symbol references in s with  their values from
+// symbols. It returns a symval, a flag to indicate if anything was modified,
+// and an error. The symval pointer is nil iff the error is non-nil. Any
+// unresolved symbol references are copied untouched to the output. The syntax
+// is explained in details in the package documentation.
+func substitute(s string, symbols *symtab) (*symval, bool, error) {
+	input := []byte(s)
+	state := newScannerState(input, symbols.prefix)
 	var resolved bytes.Buffer
-	rcount := 0
-	ucount := 0
+
+	modified := false
+	complete := true
 	end := false
 	for !end {
-		status, err := s.scan()
+		status, err := state.scan()
 		if err != nil {
-			if s.beforePos < nextPos(s.input) {
-				resolved.Write(input[s.beforePos:nextPos(s.input)])
-			}
-			return resolved.Bytes(), rcount, ucount, err
+			return nil, false, err
 		}
 		switch status {
 		case 0:
 		case 1: // $$symbol
 			// append prefix (length can be 0) (and no need to test err which is always nil)
-			resolved.Write(input[s.beforePos : s.symbolPos-2*s.markerLen])
+			resolved.Write(input[state.beforePos : state.symbolPos-2*state.markerLen])
 			// append resolved symbol or restore original
-			sym := input[s.symbolPos:nextPos(s.input)]
-			if rsym, ok := (*symbols)[string(sym)]; ok {
-				rcount++
-				resolved.WriteString(rsym)
+			sym := input[state.symbolPos:nextPos(state.input)]
+			symv, err := symbols.get(string(sym))
+
+			if err != nil {
+				return nil, false, err
+			}
+
+			if symv != nil {
+				complete = complete && symv.resolved
+				modified = true
+				resolved.WriteString(symv.s)
 			} else {
 				// restore
-				ucount++
-				resolved.WriteRune(s.marker)
-				resolved.WriteRune(s.marker)
+				complete = false
+				resolved.WriteRune(state.marker)
+				resolved.WriteRune(state.marker)
 				resolved.Write(sym)
 			}
-			s.beforePos = nextPos(s.input)
-			s.symbolPos = -1
+			state.beforePos = nextPos(state.input)
+			state.symbolPos = -1
 		case 2: // $$$symbol$
 			// append prefix (length can be 0)
-			resolved.Write(input[s.beforePos : s.symbolPos-3*s.markerLen])
+			resolved.Write(input[state.beforePos : state.symbolPos-3*state.markerLen])
 			// append resolved symbol or restore original
-			sym := input[s.symbolPos : nextPos(s.input)-1*s.markerLen]
-			if rsym, ok := (*symbols)[string(sym)]; ok {
-				rcount++
-				resolved.WriteString(rsym)
+			sym := input[state.symbolPos : nextPos(state.input)-1*state.markerLen]
+			symv, err := symbols.get(string(sym))
+
+			if err != nil {
+				return nil, false, err
+			}
+
+			if symv != nil {
+				modified = true
+				complete = complete && symv.resolved
+				resolved.WriteString(symv.s)
 			} else {
 				// restore
-				ucount++
-				resolved.WriteRune(s.marker)
-				resolved.WriteRune(s.marker)
-				resolved.WriteRune(s.marker)
+				complete = false
+				resolved.WriteRune(state.marker)
+				resolved.WriteRune(state.marker)
+				resolved.WriteRune(state.marker)
 				resolved.Write(sym)
-				resolved.WriteRune(s.marker)
+				resolved.WriteRune(state.marker)
 			}
 
 			// discard closing marker
-			s.input.ReadRune()
-			s.beforePos = nextPos(s.input) - 1*s.markerLen
-			s.symbolPos = -1
+			state.input.ReadRune()
+			state.beforePos = nextPos(state.input) - 1*state.markerLen
+			state.symbolPos = -1
 		case -1:
-			if s.beforePos < len(input) {
-				resolved.Write(input[s.beforePos:])
+			if state.beforePos < len(input) {
+				resolved.Write(input[state.beforePos:])
 			}
 			end = true
 		default:
@@ -138,7 +127,7 @@ func (subst *substituter) Substitute(input []byte, symbols *map[string]string) (
 			panic("bug found: unexpected value returned by scan()")
 		}
 	}
-	return resolved.Bytes(), rcount, ucount, nil
+	return &symval{s: resolved.String(), resolved: complete}, modified, nil
 }
 
 // scan the input for symbols. Return 0 to continue, 1 when when

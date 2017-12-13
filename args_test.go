@@ -1,36 +1,17 @@
-package args
+package args_test
 
 import (
 	"bytes"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/jpvetterli/args"
 )
 
-func TestSymbol(t *testing.T) {
-	a := NewParser(NewSpecials(""))
-	if s := a.symbol("$foo"); s != "foo" {
-		t.Errorf(`not "foo", but "%s"`, s)
-	}
-	if s := a.symbol("$$foo"); s != "" {
-		t.Errorf(`not "", but "%s"`, s)
-	}
-	if s := a.symbol("$$"); s != "" {
-		t.Errorf(`not "", but "%s"`, s)
-	}
-	if s := a.symbol("$"); s != "" {
-		t.Errorf(`not "", but "%s"`, s)
-	}
-	if s := a.symbol("aaa"); s != "" {
-		t.Errorf(`not "", but "%s"`, s)
-	}
-	if s := a.symbol(""); s != "" {
-		t.Errorf(`not "", but "%s"`, s)
-	}
-}
-
 func TestParamDuplicate(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`parameter "a" already defined`, t)
 	i := 1
 	a.Def("a", &i)
@@ -38,14 +19,14 @@ func TestParamDuplicate(t *testing.T) {
 }
 
 func TestReservedPrefix(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`"$a" cannot be used as parameter name or alias because it starts with the symbol prefix`, t)
 	i := 1
 	a.Def("$a", &i)
 }
 
 func TestParamDuplicateAlias(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`synonym "A" clashes with an existing parameter name or synonym`, t)
 	i := 1
 	s := ""
@@ -54,7 +35,7 @@ func TestParamDuplicateAlias(t *testing.T) {
 }
 
 func TestParamDuplicateTarget(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`target for parameter "b" is already assigned`, t)
 	i := 1
 	a.Def("a", &i)
@@ -62,21 +43,21 @@ func TestParamDuplicateTarget(t *testing.T) {
 }
 
 func TestParamNotPointer(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`target for parameter "a" is not a pointer`, t)
 	i := 1
 	a.Def("a", i)
 }
 
 func TestParamSplit1(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler(`cannot split values of parameter "x" which is not multi-valued`, t)
 	var x uint8
 	a.Def("x", &x).Split("foo")
 }
 
 func TestParamSplit2(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	defer panicHandler("compilation of split expression \"***\" for parameter \"x\" failed (error parsing regexp: missing argument to repetition operator: `*`)", t)
 	var x []uint8
 	a.Def("x", &x).Split("***")
@@ -84,7 +65,7 @@ func TestParamSplit2(t *testing.T) {
 
 func TestArgsMisc(t *testing.T) {
 
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	foo := false
 	bar := true
 	a.Def("foo", &foo)
@@ -105,7 +86,7 @@ func TestArgsMisc(t *testing.T) {
 
 func TestArgsOptionalAndRepeatable(t *testing.T) {
 
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	x := 3.14
 	def := a.Def("x", &x)
 	if err := matchErrorMessage(
@@ -127,23 +108,27 @@ func TestArgsOptionalAndRepeatable(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	var arr [3]int
 	a.Def("arr", &arr)
 	if err := matchErrorMessage(
 		a.Parse("arr=1"),
-		"Parse error on arr: 1 value specified, but exactly 3 expected",
+		"Parse error on arr: 1 value specified but exactly 3 expected",
 	); err != nil {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
+	a.Def("arr", &arr)
 	if err := matchErrorMessage(
 		a.Parse("arr=1 arr=2 arr=3 arr=4"),
-		"Parse error on arr: 4 values specified, but exactly 3 expected",
+		"Parse error on arr: too many values specified, expected 3",
 	); err != nil {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
+	a.Def("arr", &arr)
 	if err := matchResult(
 		a.Parse("arr=1 arr=2 arr=3"),
 		func() error {
@@ -155,7 +140,7 @@ func TestArgsOptionalAndRepeatable(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	sli := make([]int, 3, 3)
 	a.Def("sli", &sli)
 	if err := matchResult(
@@ -169,7 +154,7 @@ func TestArgsOptionalAndRepeatable(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	sli = make([]int, 0)
 	a.Def("sli", &sli)
 	if err := matchResult(
@@ -186,7 +171,7 @@ func TestArgsOptionalAndRepeatable(t *testing.T) {
 
 func TestArgsTypesSingleValue(t *testing.T) {
 
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	var x uint8
 	a.Def("x", &x)
 	if err := matchErrorMessage(
@@ -221,7 +206,7 @@ func TestArgsTypesSingleValue(t *testing.T) {
 }
 
 func TestArgsTypesMultiValue(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	var x []uint8
 	a.Def("x", &x)
 	if err := matchErrorMessage(
@@ -231,6 +216,8 @@ func TestArgsTypesMultiValue(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
+	a.Def("x", &x)
 	if err := matchResult(
 		a.Parse("x=255"),
 		func() error {
@@ -244,7 +231,7 @@ func TestArgsTypesMultiValue(t *testing.T) {
 	}
 
 	// zero length array (useless but valid)
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	var y [0]int
 	a.Def("y", &y)
 	if err := matchResult(
@@ -258,7 +245,7 @@ func TestArgsTypesMultiValue(t *testing.T) {
 }
 
 func TestArgsSplit(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	var x []uint8
 	a.Def("x", &x).Split(`\s*:\s*`)
 
@@ -273,7 +260,7 @@ func TestArgsSplit(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	var y []string
 	a.Def("y", &y).Split(`\s*[\s:,;]\s*`)
 
@@ -288,14 +275,13 @@ func TestArgsSplit(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	// the last wins
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	y = make([]string, 0)
 	a.Def("y", &y).Split(`\s*[\s:,;]\s*`)
 	if err := matchResult(
 		a.Parse("y=[a:b:c] y=[1:2]"),
 		func() error {
-			if len(y) != 2 || y[0] != "1" || y[1] != "2" {
+			if !reflect.DeepEqual(y, []string{"a", "b", "c", "1", "2"}) {
 				return fmt.Errorf("unexpected values: %v", y)
 			}
 			return nil
@@ -304,9 +290,9 @@ func TestArgsSplit(t *testing.T) {
 	}
 }
 
-func TestArgsStandalone(t *testing.T) {
+func TestArgsStandaloneName(t *testing.T) {
 
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	foo := false
 	a.Def("foo", &foo).Aka("FOO")
 
@@ -347,8 +333,95 @@ func TestArgsStandalone(t *testing.T) {
 
 }
 
+func TestArgsStandaloneValue(t *testing.T) {
+
+	a := getParser()
+	s := []string{}
+	a.Def("", &s).Aka("ANONYMOUS")
+	err := a.Parse("abc ANONYMOUS=123")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(s, []string{"abc", "123"}) {
+		t.Errorf("unexpected values: %v", s)
+	}
+
+	a = getParser()
+	s = make([]string, 0, 1)
+	a.Def("", &s).Aka("ANONYMOUS")
+	err = a.Parse("abc ANONYMOUS=123")
+	expected := "Parse error on anonymous parameter: 2 values specified, at most 1 expected"
+	if err == nil {
+		t.Errorf("missing error: %s", expected)
+	} else if err.Error() != expected {
+		t.Errorf(`unexpected error: "%s", expected: "%s"`, err.Error(), expected)
+	}
+
+	a = getParser()
+	s = make([]string, 0, 0)
+	a.Def("", &s)
+	err = a.Parse("[contains an $$unresolved ref]")
+	expected = `cannot resolve standalone value "contains an $$unresolved ref"`
+	if err == nil {
+		t.Errorf("missing error: %s", expected)
+	} else if err.Error() != expected {
+		t.Errorf(`unexpected error: "%s", expected: "%s"`, err.Error(), expected)
+	}
+
+	a = getParser()
+	x := ""
+	a.Def("", &x).Verbatim()
+	err = a.Parse("[contains an $$unresolved ref]")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if x != "contains an $$unresolved ref" {
+		t.Errorf("unexpected value: %s", x)
+	}
+
+	a = getParser()
+	s = []string{}
+	a.Def("", &s).Verbatim()
+	err = a.Parse("[contains an $$unresolved ref]")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(s, []string{"contains an $$unresolved ref"}) {
+		t.Errorf("unexpected values: %v", s)
+	}
+
+	a = getParser()
+	arr := [1]string{}
+	a.Def("", &arr).Verbatim()
+	err = a.Parse("[contains an $$unresolved ref]")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if arr[0] != "contains an $$unresolved ref" {
+		t.Errorf("unexpected values: %v", s)
+	}
+
+	defer panicHandler(`anonymous parameter cannot be verbatim because its target of type *int cannot take a string`, t)
+	a = getParser()
+	y := 1
+	a.Def("", &y).Verbatim()
+}
+
+func TestArgsRecursive(t *testing.T) {
+	a := getParser()
+	foo := ""
+	a.Def("foo", &foo)
+	err := a.Parse("$quux=QUUX $macro=[foo=[bar $$quux]] $$macro")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if foo != "bar QUUX" {
+		t.Errorf("unexpected value: %s", foo)
+	}
+}
+
 func TestArgsTimeScanner(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	var x time.Time
 	defx := a.Def("x", &x)
 	if err := matchErrorMessage(
@@ -404,7 +477,7 @@ func fooBarScanner(value string, target interface{}) error {
 func TestArgsCustomScanner(t *testing.T) {
 
 	var s string
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	a.Def("s", &s).Scan(fooBarScanner)
 	if err := matchResult(
 		a.Parse("s=foo"),
@@ -420,7 +493,7 @@ func TestArgsCustomScanner(t *testing.T) {
 	// the last wins, even if the value is wrong
 	if err := matchErrorMessage(
 		a.Parse("s=a s=foo s = b"),
-		`Parse error on s: fooBarScanner error: "b", expecting "foo" or "bar"`,
+		`Parse error on s: fooBarScanner error: "a", expecting "foo" or "bar"`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -432,7 +505,7 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	a.Def("s", &s).Opt().Scan(fooBarScanner)
 	s = "quux"
 	if err := matchErrorMessage(
@@ -442,7 +515,7 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	var i int
 	a.Def("i", &i).Scan(fooBarScanner)
 	if err := matchErrorMessage(
@@ -452,7 +525,7 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	ss := [3]string{}
 	a.Def("", &ss).Scan(fooBarScanner)
 	if err := matchResult(
@@ -468,12 +541,12 @@ func TestArgsCustomScanner(t *testing.T) {
 
 	if err := matchErrorMessage(
 		a.Parse("foo bar foo foo foo"),
-		"Parse error on anonymous parameter: 5 values specified, but exactly 3 expected",
+		"Parse error on anonymous parameter: too many values specified, expected 3",
 	); err != nil {
 		t.Error(err.Error())
 	}
 
-	a = NewParser(NewSpecials(""))
+	a = getParser()
 	sl := make([]string, 0)
 	a.Def("sl", &sl).Scan(fooBarScanner)
 	if err := matchResult(
@@ -487,6 +560,9 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
+	sl = make([]string, 0)
+	a.Def("sl", &sl).Scan(fooBarScanner)
 	sl = make([]string, 1, 3)
 	if err := matchResult(
 		a.Parse("sl=foo sl=bar sl=foo"),
@@ -499,7 +575,9 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
 	sl = make([]string, 1, 3)
+	a.Def("sl", &sl).Scan(fooBarScanner)
 	if err := matchResult(
 		a.Parse("sl=foo sl=bar sl=foo"),
 		func() error {
@@ -511,7 +589,9 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
 	sl = []string{"a", "b", "c", "d"}
+	a.Def("sl", &sl).Scan(fooBarScanner)
 	if err := matchResult(
 		a.Parse("sl=foo sl=bar sl=foo sl=foo"),
 		func() error {
@@ -523,7 +603,9 @@ func TestArgsCustomScanner(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	a = getParser()
 	sl = make([]string, 2, 3)
+	a.Def("sl", &sl).Scan(fooBarScanner)
 	if err := matchErrorMessage(
 		a.Parse("sl=foo"),
 		`Parse error on sl: invalid default value at offset 1: fooBarScanner error: "", expecting "foo" or "bar"`,
@@ -534,7 +616,7 @@ func TestArgsCustomScanner(t *testing.T) {
 
 func TestArgsCustomScannerSpecialCases(t *testing.T) {
 
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	sl := make([]string, 2, 3)
 	def := a.Def("sl", &sl).Scan(fooBarScanner)
 	if err := matchErrorMessage(
@@ -563,7 +645,7 @@ func TestArgsCustomScannerSpecialCases(t *testing.T) {
 }
 
 func TestArgsPrintDoc(t *testing.T) {
-	a := NewParser(NewSpecials(""))
+	a := getParser()
 	err := setupTestArgsPrintDoc(a)
 	if err != nil {
 		t.Errorf(`unexpected error: "%s"`, err.Error())
@@ -627,7 +709,7 @@ func commonPrefix(s1, s2 string) string {
 }
 
 // setupTestArgsPrintDoc sets up parser for TestArgsPrintDoc, catching panics
-func setupTestArgsPrintDoc(a *Parser) (err error) {
+func setupTestArgsPrintDoc(a *args.Parser) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("%v", r)
@@ -667,9 +749,11 @@ func TestSubsBasic(t *testing.T) {
 	}{
 		{"$a=b $c=$$a foo=$$c", "b"},
 		{"$a=b $c=$$a foo=[ $$c ]", " b "},
+		// order relevant:
+		{"foo=[ $$c ] $c=$$a $a=b", " $$c "},
 		{"$a=b $c=$$a foo=[ $$cx ]", " $$cx "},
 		{"$a=b $c=$$a foo=[ $$$c$x ]", " bx "},
-		// escaping has no effect on symbols:
+		// // escaping has no effect on symbols:
 		{`$a=b $c=\$$a foo=$$c`, `\b`},
 		{`$c=$$a foo=$$c`, `$$a`},
 		// first wins:
@@ -678,9 +762,9 @@ func TestSubsBasic(t *testing.T) {
 	}
 
 	for _, data := range testData {
-		a := NewParser(NewSpecials(""))
+		a := getParser()
 		foo := ""
-		a.Def("foo", &foo)
+		a.Def("foo", &foo).Verbatim()
 		if err := matchResult(
 			a.Parse(data.input),
 			func() error {
@@ -691,6 +775,104 @@ func TestSubsBasic(t *testing.T) {
 			}); err != nil {
 			t.Error(err.Error())
 		}
+	}
+}
+
+func TestSubsCycle(t *testing.T) {
+
+	var testData = []struct {
+		input  string
+		expect string
+	}{
+		{"$a=$$b $b=$$a foo=$$b", `Parse error on foo: cyclical symbol definition detected: "b"`},
+		{"$a=$$b $b=$$a foo=$$a", `Parse error on foo: cyclical symbol definition detected: "a"`},
+		{"$a=$$b $b=$$c $c=$$d $d=$$e $e=$$a foo=$$a", `Parse error on foo: cyclical symbol definition detected: "a"`},
+	}
+	for _, data := range testData {
+		a := getParser()
+		foo := ""
+		a.Def("foo", &foo)
+		err := a.Parse(data.input)
+		if err == nil {
+			t.Errorf(`expected error missing: "%s"`, data.expect)
+		} else if err.Error() != data.expect {
+			t.Errorf(`unexpected error message: "%s" expected: "%s"`, err.Error(), data.expect)
+		}
+	}
+}
+
+func TestSubsName(t *testing.T) {
+	a := getParser()
+	foo := ""
+	a.Def("foo", &foo)
+	err := a.Parse("$oo=oo $foo=f$$oo $$foo=bar")
+	if err != nil {
+		t.Errorf(`unexpected error message: "%s"`, err.Error())
+	}
+	if foo != "bar" {
+		t.Errorf(`foo: "%s", instead of "bar"`, foo)
+	}
+
+	a = getParser()
+	expected := `cannot resolve name in "$$quux = bar"`
+	err = a.Parse("$$quux=bar")
+	if err == nil {
+		t.Errorf(`missing error message: "%s"`, expected)
+	} else if err.Error() != expected {
+		t.Errorf(`unexpected error message: "%s", expected: "%s"`, err.Error(), expected)
+	}
+
+	a = getParser()
+	foo = ""
+	a.Def("foo", &foo)
+	expected = `cannot resolve name in "$$foo = bar"`
+	err = a.Parse("$$foo=bar $foo=f$$oo $oo=oo")
+	if err == nil {
+		t.Errorf(`missing error message: "%s"`, expected)
+	} else if err.Error() != expected {
+		t.Errorf(`unexpected error message: "%s", expected: "%s"`, err.Error(), expected)
+	}
+}
+
+func TestSubsMacro1(t *testing.T) {
+	a := getParser()
+	foox := ""
+	fooa := ""
+	a.Def("foox", &foox).Verbatim()
+	a.Def("fooa", &fooa).Verbatim()
+	err := a.Parse("$BODY = [arg1=$$ARG1 arg2=$$ARG2] " +
+		"foox=[$ARG1=x $ARG2=y $$BODY] fooa=[$ARG1=a $ARG2=b $$BODY]")
+
+	expectedFoox := "$ARG1=x $ARG2=y arg1=$$ARG1 arg2=$$ARG2"
+	expectedFooa := "$ARG1=a $ARG2=b arg1=$$ARG1 arg2=$$ARG2"
+
+	if err != nil {
+		t.Errorf(`unexpected error message: "%s"`, err.Error())
+	}
+	if foox != expectedFoox {
+		t.Errorf(`foox: "%s", instead of "%s"`, foox, expectedFoox)
+	}
+	if fooa != expectedFooa {
+		t.Errorf(`fooa: "%s", instead of "%s"`, fooa, expectedFooa)
+	}
+
+	a = getParser()
+	arg1 := ""
+	arg2 := ""
+	a.Def("arg1", &arg1)
+	a.Def("arg2", &arg2)
+	a.Parse(foox)
+	if arg1 != "x" || arg2 != "y" {
+		t.Errorf(`nested parsing: "%s, %s", instead of "x, y"`, arg1, arg2)
+	}
+	a = getParser()
+	arg1 = ""
+	arg2 = ""
+	a.Def("arg1", &arg1)
+	a.Def("arg2", &arg2)
+	a.Parse(fooa)
+	if arg1 != "a" || arg2 != "b" {
+		t.Errorf(`nested parsing: "%s, %s", instead of "a, b"`, arg1, arg2)
 	}
 }
 
@@ -731,4 +913,8 @@ func matchResult(err error, test func() error) error {
 		return e
 	}
 	return nil
+}
+
+func getParser() *args.Parser {
+	return args.NewParser(nil)
 }
