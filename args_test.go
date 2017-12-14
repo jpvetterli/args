@@ -279,9 +279,23 @@ func TestArgsSplit(t *testing.T) {
 	y = make([]string, 0)
 	a.Def("y", &y).Split(`\s*[\s:,;]\s*`)
 	if err := matchResult(
-		a.Parse("y=[a:b:c] y=[1:2]"),
+		a.Parse("y=[a b;c] y=[1,2:]"),
 		func() error {
-			if !reflect.DeepEqual(y, []string{"a", "b", "c", "1", "2"}) {
+			if !reflect.DeepEqual(y, []string{"a", "b", "c", "1", "2", ""}) {
+				return fmt.Errorf("unexpected values: %v", y)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	a = getParser()
+	y = make([]string, 0)
+	a.Def("y", &y).Split(`---`)
+	if err := matchResult(
+		a.Parse("y=[a---b--c---d---]"),
+		func() error {
+			if !reflect.DeepEqual(y, []string{"a", "b--c", "d", ""}) {
 				return fmt.Errorf("unexpected values: %v", y)
 			}
 			return nil
@@ -338,11 +352,11 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a := getParser()
 	s := []string{}
 	a.Def("", &s).Aka("ANONYMOUS")
-	err := a.Parse("abc ANONYMOUS=123")
+	err := a.Parse("abc ANONYMOUS=123 [] = 456")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(s, []string{"abc", "123"}) {
+	if !reflect.DeepEqual(s, []string{"abc", "123", "456"}) {
 		t.Errorf("unexpected values: %v", s)
 	}
 
@@ -399,6 +413,52 @@ func TestArgsStandaloneValue(t *testing.T) {
 	}
 	if arr[0] != "contains an $$unresolved ref" {
 		t.Errorf("unexpected values: %v", s)
+	}
+
+	a = getParser()
+	sl := []string{}
+	a.Def("z", &sl)
+	err = a.Parse(`$X = bar z=foo z=\= z=\[x: z=\$$X\]`)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar]`}) {
+		t.Errorf("unexpected values: %v", sl)
+	}
+
+	a = getParser()
+	sl = []string{}
+	a.Def("", &sl)
+	// same as previous but anonymous
+	err = a.Parse(`$X = bar foo \= \[x: \$$X\\\]`)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar]`}) {
+		t.Errorf("unexpected values: %v", sl)
+	}
+
+	a = getParser()
+	sl = []string{}
+	a.Def("", &sl)
+	// same as previous but anonymous
+	err = a.Parse(`$X = bar \$$X \\\= \[x:\ :x\]`)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(sl, []string{`\bar`, `\=`, "[x: :x]"}) {
+		t.Errorf("unexpected values: %v", sl)
+	}
+
+	a = getParser()
+	sl = []string{}
+	a.Def("", &sl)
+	err = a.Parse(`$X = bar foo \= \[x: \$$X\\\\`)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar\`}) {
+		t.Errorf("unexpected values: %v", sl)
 	}
 
 	defer panicHandler(`anonymous parameter cannot be verbatim because its target of type *int cannot take a string`, t)
@@ -658,7 +718,7 @@ The foo command does things.
 
 Parameters:
   (nameless), file
-           foo takes any number of file names.
+           foo takes any number of file names
            type: string, any number of values
   short, bar
            short is a parameter with a short name
@@ -671,11 +731,17 @@ Parameters:
            It also has a long explanation.
            type: string, 0-2 values (default: [a1 b2])
   slice    slice is a parameter taking any number of values
-           type: int, any number of values
+           type: int, split: ---, any number of values
   array    array is a parameter taking 4 values
-           type: float64, exactly 4 values
+           type: float64, split: \s*:\s*, exactly 4 values
   undoc, -u
            type: float64
+Special characters:
+  $        symbol prefix
+  =        name-value separator
+  [        opening quote
+  ]        closing quote
+  \        escape
 `
 	if b.String() != expected {
 		t.Errorf("PrintDoc output does not match")
@@ -685,7 +751,7 @@ Parameters:
 				commonPrefix(b.String(), expected) + "\n" +
 				"=== diff (end) ===")
 	}
-	// NOTE:	a.PrintDoc(os.Stdout)
+	// NOTE: a.PrintDoc(os.Stdout)
 	a = nil // reclaim memory
 }
 
@@ -728,15 +794,15 @@ func setupTestArgsPrintDoc(a *args.Parser) (err error) {
 		"The foo command does things.",
 		"",
 		"Parameters:")
-	a.Def("", &files).Aka("file").Doc("foo takes any number of file names.")
+	a.Def("", &files).Aka("file").Doc("foo takes any number of file names")
 	a.Def("short", &short).Aka("bar").Opt().Doc("short is a parameter with a short name")
 	a.Def("help", &help).Aka("-h").Doc("provide help")
 	a.Def("yelp", &yelp).Aka("-y").Opt()
 	a.Def("long-name", &long).Aka("42").Doc(
 		"long-name is a parameter with a name longer than 8",
 		"It also has a long explanation.")
-	a.Def("slice", &sl).Doc("slice is a parameter taking any number of values")
-	a.Def("array", &ar).Doc("array is a parameter taking 4 values")
+	a.Def("slice", &sl).Doc("slice is a parameter taking any number of values").Split(`---`)
+	a.Def("array", &ar).Doc("array is a parameter taking 4 values").Split(`\s*:\s*`)
 	a.Def("undoc", &undoc).Aka("-u")
 	return
 }

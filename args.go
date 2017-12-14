@@ -8,14 +8,10 @@ import (
 	"strings"
 )
 
-// TODO: review all doc
-// TODO: remove all the TODOs in all files
-// TODO: skip BOM if 1st character of an input file
-
-// Parser methods are used to define, parse, and document command line
-// parameters.
+// Parser methods define and parse command line parameters. There are also
+// methods for specifying and producing command documentation.
 type Parser struct {
-	custom  *Specials // nil for standard marks
+	custom  *Specials
 	params  map[string]*Param
 	seq     []string // names in definition sequence
 	doc     []string
@@ -24,7 +20,7 @@ type Parser struct {
 }
 
 // NewParser returns a Parser with a configuration of special characters.
-// A default is used if configuration is nil.
+// A default configuration is used if it is nil.
 func NewParser(configuration *Specials) *Parser {
 	if configuration == nil {
 		configuration = NewSpecials("")
@@ -40,24 +36,21 @@ func NewParser(configuration *Specials) *Parser {
 }
 
 // Def defines a parameter with a name and a target to take one or more values.
-// It returns a Param to allow chaining with Param functions.
+// It returns a Param which can be used to optionally configure various details.
+// This is designed to allow chaining of methods, so that a complete parameter
+// definition can be made with a one-liner.
 //
 // Example of chaining:
-//  func setup(a Parser) (err error) {
-//    defer func() {
-//      err = fmt.Errorf("%v", recover())
-//    }()
 //    var help bool
 //    a.Def("-help", &help).Aka("-h").Aka("?").Opt().Doc("print a usage summary and exit")
-//    return
-//  }
 //
 // When target points to an array, the parameter takes a number of values
-// exactly equal to the length. When target points to a slice, it takes a number
+// exactly equal to its length. When target points to a slice, it takes a number
 // of values not exceeding its capacity, unless the capacity is zero, which is
-// interpreted as no limit. Panics if name is already used. Panics if target is
-// not a pointer. It is the only Parser function which can panic (except for
-// bugs).
+// interpreted as no limit. It is the only Parser method which can officially
+// panic. It panics if the name is already used, or if the name has a symbol
+// prefix, or if the target is not a pointer, or if the target is already
+// assigned to another  parameter.
 func (a *Parser) Def(name string, target interface{}) *Param {
 
 	// many functions rely on target being a pointer (see refl*)
@@ -92,9 +85,9 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	return &p
 }
 
-// Parse extracts parameter values from the input. The result is nil unless
-// there is an error. Values are scanned and the targets passed to Def are set.
-// The input syntax is explained in the package documentation.
+// Parse parses s to extract and assign values to parameter targets.  The result
+// is nil unless there is an error.  The input syntax is explained in the
+// package documentation.
 func (a *Parser) Parse(s string) error {
 	err := a.parse(s)
 	if err != nil {
@@ -215,8 +208,7 @@ func (a *Parser) parsePair(nv *nameValue) error {
 	return nil
 }
 
-// ParseStrings is a wrapper for Parse, which is passed all arguments joined
-// with a blank.
+// ParseStrings calls Parse with all arguments joined with a blank.
 func (a *Parser) ParseStrings(s []string) error {
 	return a.Parse(strings.Join(s, " "))
 }
@@ -226,9 +218,9 @@ func (a *Parser) Doc(s ...string) {
 	a.doc = s
 }
 
-// PrintDoc uses the Writer to print the command help text, followed by the help
+// PrintDoc uses a Writer to print the command help text, followed by the help
 // text of each parameter in definition sequence. Any relevant information about
-// parameters is included.
+// parameters is included. A section indicating the special characters is added.
 func (a *Parser) PrintDoc(w io.Writer) {
 	for _, s := range a.doc {
 		fmt.Fprintln(w, s)
@@ -242,17 +234,25 @@ func (a *Parser) PrintDoc(w io.Writer) {
 		switch value.Kind() {
 		case reflect.Slice:
 			typ = typ.Elem()
+			details = ""
+			if p.splitter != nil {
+				details += fmt.Sprintf(", split: %v", p.splitter)
+			}
 			if p.limit > 0 {
-				details = fmt.Sprintf(", 0-%d value%s", p.limit, plural(p.limit))
+				details += fmt.Sprintf(", 0-%d value%s", p.limit, plural(p.limit))
 			} else {
-				details = ", any number of values"
+				details += ", any number of values"
 			}
 			if value.Len() > 0 {
 				details += fmt.Sprintf(" (default: %v)", value)
 			}
 		case reflect.Array:
 			typ = typ.Elem()
-			details = fmt.Sprintf(", exactly %d value%s", p.limit, plural(p.limit))
+			details = ""
+			if p.splitter != nil {
+				details += fmt.Sprintf(", split: %v", p.splitter)
+			}
+			details += fmt.Sprintf(", exactly %d value%s", p.limit, plural(p.limit))
 		default:
 			// scalar
 			if p.limit == 0 {
@@ -282,14 +282,24 @@ func (a *Parser) PrintDoc(w io.Writer) {
 			}
 		}
 	}
+	if len(a.seq) > 0 {
+		fmt.Fprintf(w, "Special characters:\n")
+		fmt.Fprintf(w, "  %c        %s\n", a.custom.SymbolPrefix(), "symbol prefix")
+		fmt.Fprintf(w, "  %c        %s\n", a.custom.Separator(), "name-value separator")
+		fmt.Fprintf(w, "  %c        %s\n", a.custom.LeftQuote(), "opening quote")
+		fmt.Fprintf(w, "  %c        %s\n", a.custom.RightQuote(), "closing quote")
+		fmt.Fprintf(w, "  %c        %s\n", a.custom.Escape(), "escape")
+	}
 }
 
-// Param methods are used to specify details of parameter definitions. A Param
-// is created by Parser.Def, which names a parameter and sets the target that
-// will take one or more values. The functions are designed to support chaining.
-// Any error detected by a Param function results in a panic (as is also the
-// case for Parser.Def). This is natural since a program cannot continue safely
-// after a definition error. Panics occur as documented in the functions.
+// Param methods specify optional details of parameter definitions. A Param is
+// created by Parser.Def, which gives the parameter a name and sets the target
+// that will take values. Param methods are designed to support chaining. Any
+// error detected by a Param function results in a panic (as is also the case
+// for Parser.Def). This is natural since a definition error is a bug in the
+// program, which cannot continue safely. On the other hand,  errors originating
+// from user input don't cause panics.  Panics are documented in the relevant
+// functions.
 type Param struct {
 	dict     *Parser
 	name     string // the canonical name
@@ -302,7 +312,8 @@ type Param struct {
 	doc      []string
 }
 
-// Aka sets name as a synonym for the parameter. Panics if the name is in use.
+// Aka sets alias as a synonym for the parameter name.  Panics if alias is
+// already used as a name or synonym for any parameter.
 func (p *Param) Aka(alias string) *Param {
 	if _, ok := p.dict.params[alias]; ok {
 		panic(fmt.Errorf(`synonym "%s" clashes with an existing parameter name or synonym`, alias))
@@ -317,8 +328,7 @@ func (p *Param) Aka(alias string) *Param {
 
 // Opt indicates that the parameter is optional. Only single-value parameters
 // can be specified as optional. To make multi-value parameters optional use a
-// slice with length zero as target. Panics if the target is an array or a
-// slice.
+// slice. Panics if the target is an array or a slice.
 func (p *Param) Opt() *Param {
 	if reflLen(p.target) >= 0 {
 		panic(fmt.Errorf(`parameter "%s" is multi-valued and cannot be optional (hint: use a slice with length 0 instead)`, p.name))
@@ -328,8 +338,8 @@ func (p *Param) Opt() *Param {
 }
 
 // Verbatim indicates that the parameter value can contain unresolved symbol
-// references. Only parameters with a target pointing to a string can be
-// specified as verbatim. Panics if the target does not point to a string.
+// references. Only parameters with a target taking strings can be specified as
+// verbatim. Panics if the target points to a non-string.
 func (p *Param) Verbatim() *Param {
 	ok := true
 
@@ -468,7 +478,7 @@ func (p *Param) assign(value string, target interface{}) error {
 	if p.scan != nil {
 		return p.scan(value, target)
 	}
-	return Scan(value, target)
+	return typescan(value, target)
 }
 
 // verify verifies that omitted parameters can be omitted and that default

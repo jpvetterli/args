@@ -34,6 +34,8 @@ var tokTestData = []struct {
 	{"\ufefffoo", []interface{}{errors.New("at \"\ufffd\": byte order mark character not supported")}},
 	{"fo\ufeffo", []interface{}{errors.New("at \"fo\ufffd\": byte order mark character not supported")}}, // \ufffd is �
 	{"fo\ufffdo", []interface{}{errors.New("at \"fo\ufffd\": invalid character")}},
+	{`foo \= \[x: \$$X\\`, []interface{}{"foo", "=", "[x:", `\$$X\`}},
+	{`foo \= \[x: \$$X\]`, []interface{}{"foo", "=", "[x:", `\$$X]`}},
 }
 
 func TestTokenizerOnGenericData(t *testing.T) {

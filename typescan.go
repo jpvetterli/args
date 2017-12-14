@@ -6,10 +6,10 @@ import (
 	"strconv"
 )
 
-// Scan converts the value to the type pointed to by the target. The target must
+// typescan converts the value to the type pointed to by the target. The target must
 // be a pointer to one of the basic types supported by Parse* functions in the
 // strconv package.
-func Scan(value string, target interface{}) error {
+func typescan(value string, target interface{}) error {
 	if reflect.ValueOf(target).Kind() != reflect.Ptr {
 		return fmt.Errorf(`target for value "%s" is not a pointer`, value)
 	}
