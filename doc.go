@@ -29,7 +29,8 @@ A Mini Language
 
 Parameters are formulated using a mini-language where words belong either to a
 name or to a value. Names and values must agree with parameter definitions made
-in the program.
+in the program. Names are composed of letters, digits (as tested by
+unicode.IsLetter and IsDigit), hyphens, or underscores.
 
 Syntactically, names and values are recognizable by the presence of a separator
 between them. The separator is one of five specially designated characters
@@ -80,14 +81,13 @@ will not know if foo came before bar.
 
 Symbols And Substitution
 
-Parameter names are given by the program but symbols can be freely chosen. A
-symbol is a string of letters or digits (as tested by unicode.IsLetter and
-unicode.isDigit), hyphens or undersores and cannot contain a symbol prefix
-character. A symbol is defined by prefixing it once with the symbol prefix. A
-reference consists consists of a symbol preceded either by 2 prefixes (as in the
-string "my $$foo is rich") or preceded by 3 prefixes and followed by 1 (as in
-"$$$foo$bar"). The second notation is ugly, but useful when a symbol reference
-is directly followed by a valid symbol character.
+Parameter names are given by the program but symbols can be freely chosen, as
+long as they follow the same syntax rules as parameter names. A symbol is
+defined by prefixing it once with the symbol prefix. A reference consists
+consists of a symbol preceded either by 2 prefixes (as in the string "my $$foo
+is rich") or preceded by 3 prefixes and followed by 1 (as in "$$$foo$bar"). The
+second notation is ugly, but useful when a symbol reference is directly followed
+by a valid symbol character.
 
 Parameters and symbols are in distinct name spaces, and it is possible to use
 the name of a parameter for a symbol, as in "$foo=bar foo=$$foo" which is

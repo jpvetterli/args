@@ -148,3 +148,18 @@ func TestByteOrderMarkError(t *testing.T) {
 		t.Errorf("Error string: %q, expected: %q", errorString, expectedErrorString)
 	}
 }
+
+func TestValid(t *testing.T) {
+	for _, r := range []rune("øabc-_日本語") {
+		if !valid(r) {
+			t.Errorf("unexpected invalid character: %c", r)
+		}
+	}
+
+	for _, r := range []rune("⌘.:$€@#=[]\\") {
+		if valid(r) {
+			t.Errorf("unexpected valid character: %c", r)
+		}
+	}
+
+}

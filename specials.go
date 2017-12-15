@@ -1,6 +1,9 @@
 package args
 
-import "errors"
+import (
+	"fmt"
+	"unicode"
+)
 
 // Specials is a set of 5 characters playing a special role when parsing command
 // line arguments. These characters are explained in detail in the package
@@ -13,18 +16,28 @@ type Specials struct {
 // length 5. The special characters are the symbol prefix, the left quote, the
 // right quote, the name-value separator, and the escape character, in that
 // order. If the string is empty, default special characters are used: $, [, ], =,
-// and \.
+// and \. Valid special characters must be graphic and not white space, and may
+// not be a character valid in a name (letter, digit, hyphen, underscore).
+// Panics if the string contains an invalid character, if the number of
+// characters in the string is not 5, or if characters are not all distinct.
 func NewSpecials(s string) *Specials {
 	if len(s) == 0 {
 		return &Specials{r: [5]rune{'$', '[', ']', '=', '\\'}}
 	}
 	r := []rune(s)
-	if len(r) != 5 ||
-		r[0] == r[1] || r[0] == r[2] || r[0] == r[3] || r[0] == r[4] ||
+	for _, c := range r {
+		if !validSpecial(c) {
+			panic(fmt.Errorf("cannot use '%c' as a special character", c))
+		}
+	}
+	if len(r) != 5 {
+		panic(fmt.Errorf(`exactly 5 special characters are required (%s)`, s))
+	}
+	if r[0] == r[1] || r[0] == r[2] || r[0] == r[3] || r[0] == r[4] ||
 		r[1] == r[2] || r[1] == r[3] || r[1] == r[4] ||
 		r[2] == r[3] || r[2] == r[4] ||
 		r[3] == r[4] {
-		panic(errors.New("expected 5 distinct special characters and not: " + s))
+		panic(fmt.Errorf(`the special characters in %s are not all distinct`, s))
 	}
 	var r1 [5]rune
 	copy(r1[:], r)
@@ -70,4 +83,16 @@ func (s *Specials) Separator() rune {
 func (s *Specials) Escape() rune {
 	s.check()
 	return s.r[4]
+}
+
+// valid returns true iff char is valid in a parameter or symbol name.
+// Valid characters are letters, digits, the hyphen and the underscore.
+func valid(char rune) bool {
+	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '-' || char == '_'
+}
+
+// validSpecial returns true iff char is valid as a special character.
+// Valid special characters are graphic, not white space, not valid in a name.
+func validSpecial(char rune) bool {
+	return !valid(char) && unicode.IsGraphic(char) && !unicode.IsSpace(char)
 }

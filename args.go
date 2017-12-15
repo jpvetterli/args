@@ -48,9 +48,10 @@ func NewParser(configuration *Specials) *Parser {
 // exactly equal to its length. When target points to a slice, it takes a number
 // of values not exceeding its capacity, unless the capacity is zero, which is
 // interpreted as no limit. It is the only Parser method which can officially
-// panic. It panics if the name is already used, or if the name has a symbol
-// prefix, or if the target is not a pointer, or if the target is already
-// assigned to another  parameter.
+// panic. It panics if the name is already used, if the name contains a
+// character other than a letter, a digit, a hyphen or an underscore, if the
+// target is not a pointer, or if the target is already assigned to another
+// parameter.
 func (a *Parser) Def(name string, target interface{}) *Param {
 
 	// many functions rely on target being a pointer (see refl*)
@@ -402,8 +403,10 @@ func (p *Param) Split(regex string) *Param {
 
 // validate verifies a name (no symbol prefix allowed)
 func (a *Parser) validate(name string) error {
-	if strings.IndexRune(name, a.custom.SymbolPrefix()) == 0 {
-		return fmt.Errorf(`"%s" cannot be used as parameter name or alias because it starts with the symbol prefix`, name)
+	for _, r := range []rune(name) {
+		if !valid(r) {
+			return fmt.Errorf(`"%s" cannot be used as parameter name or alias because it includes the character '%c'`, name, r)
+		}
 	}
 	return nil
 }

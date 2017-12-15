@@ -3,7 +3,6 @@ package args
 import (
 	"bytes"
 	"fmt"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -178,7 +177,7 @@ func (s *scannerState) scan() (int, error) {
 		}
 
 	case smsDollar2:
-		if s.valid(r) {
+		if valid(r) {
 			// possible $$symbol
 			s.symbolPos = nextPos(s.input) - w
 			s.state = smsSymbol
@@ -194,7 +193,7 @@ func (s *scannerState) scan() (int, error) {
 		}
 
 	case smsDollar3:
-		if s.valid(r) {
+		if valid(r) {
 			// possible $$$symbol$
 			s.symbolPos = nextPos(s.input) - w
 			s.state = smsDollarSymbol
@@ -210,7 +209,7 @@ func (s *scannerState) scan() (int, error) {
 		}
 
 	case smsSymbol:
-		if !s.valid(r) {
+		if !valid(r) {
 			s.input.UnreadRune()
 			if r == 0 {
 				s.state = smsEnd
@@ -225,7 +224,7 @@ func (s *scannerState) scan() (int, error) {
 			// no backtracking
 			s.state = smsInit
 			return 2, nil
-		} else if !s.valid(r) {
+		} else if !valid(r) {
 			// it's a $$symbol with a $ in front
 			s.input.UnreadRune()
 			s.state = smsInit
@@ -236,9 +235,4 @@ func (s *scannerState) scan() (int, error) {
 		return -1, nil
 	}
 	return 0, nil
-}
-
-// valid returns true if r is valid symbol character.
-func (s *scannerState) valid(r rune) bool {
-	return r != 0 && r != s.marker && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_')
 }

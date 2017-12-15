@@ -7,18 +7,23 @@ import (
 )
 
 func TestNewSpecialsPanic1(t *testing.T) {
-	defer panicHandler(`expected 5 distinct special characters and not: this is too long`, t)
-	args.NewSpecials(`this is too long`)
+	defer panicHandler(`cannot use 'E' as a special character`, t)
+	args.NewSpecials(`$=[]E`)
 }
 
 func TestNewSpecialPanic2(t *testing.T) {
-	defer panicHandler(`expected 5 distinct special characters and not: @"":\`, t)
+	defer panicHandler(`the special characters in @"":\ are not all distinct`, t)
 	args.NewSpecials(`@"":\`)
 }
 
 func TestNewSpecialsPanic3(t *testing.T) {
-	defer panicHandler(`expected 5 distinct special characters and not: @:\`, t)
+	defer panicHandler(`exactly 5 special characters are required (@:\)`, t)
 	args.NewSpecials(`@:\`)
+}
+
+func TestNewSpecialsPanic4(t *testing.T) {
+	defer panicHandler(`exactly 5 special characters are required (++++++)`, t)
+	args.NewSpecials(`++++++`)
 }
 
 func TestNewSpecialsEmpty(t *testing.T) {

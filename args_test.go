@@ -20,9 +20,16 @@ func TestParamDuplicate(t *testing.T) {
 
 func TestReservedPrefix(t *testing.T) {
 	a := getParser()
-	defer panicHandler(`"$a" cannot be used as parameter name or alias because it starts with the symbol prefix`, t)
+	defer panicHandler(`"$a" cannot be used as parameter name or alias because it includes the character '$'`, t)
 	i := 1
 	a.Def("$a", &i)
+}
+
+func TestInvalidChar(t *testing.T) {
+	a := getParser()
+	defer panicHandler(`"a b" cannot be used as parameter name or alias because it includes the character ' '`, t)
+	i := 1
+	a.Def("a b", &i)
 }
 
 func TestParamDuplicateAlias(t *testing.T) {
