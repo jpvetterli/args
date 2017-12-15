@@ -9,7 +9,7 @@ Built-in operators:
 * import
 * include
 * reset
-* #
+* \# 
 
 ### v0.1.1 (2017-12-14)
 
