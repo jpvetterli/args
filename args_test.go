@@ -3,7 +3,10 @@ package args_test
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +71,20 @@ func TestParamSplit2(t *testing.T) {
 	defer panicHandler("compilation of split expression \"***\" for parameter \"x\" failed (error parsing regexp: missing argument to repetition operator: `*`)", t)
 	var x []uint8
 	a.Def("x", &x).Split("***")
+}
+
+func TestParamOperator1(t *testing.T) {
+	a := getParser()
+	defer panicHandler(`parameter name "--" is the name of an operator`, t)
+	i := 1
+	a.Def("--", &i)
+}
+
+func TestParamOperator2(t *testing.T) {
+	a := getParser()
+	defer panicHandler(`parameter name "include" is the name of an operator`, t)
+	i := 1
+	a.Def("include", &i)
 }
 
 func TestArgsMisc(t *testing.T) {
@@ -709,6 +726,149 @@ func TestArgsCustomScannerSpecialCases(t *testing.T) {
 	def.Opt()
 
 	t.Errorf("this statement should not have been executed (panic)")
+}
+
+func TestOperatorSkip(t *testing.T) {
+	a := getParser()
+	var x uint8
+	a.Def("x", &x)
+	if err := matchResult(
+		a.Parse("x=255 --=[x=100 foo=$$UNDEF, no error because quotes are balanced]"),
+		func() error {
+			if x != 255 {
+				return fmt.Errorf("x not 255, but %d", x)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorCond(t *testing.T) {
+	a := getParser()
+	foo := ""
+	a.Def("foo", &foo)
+	if err := matchResult(
+		a.Parse("cond=[if=[UNDEF] then=[foo=foo] else=[foo=bar]]"),
+		func() error {
+			if foo != "bar" {
+				return fmt.Errorf(`expected "bar" not "%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := matchResult(
+		a.Parse("$DEF=1 cond=[if=[DEF] then=[foo=foo] else=[foo=bar]]"),
+		func() error {
+			if foo != "foo" {
+				return fmt.Errorf(`expected "foo" not "%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorInclude(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("include=[testdata/include.test]"),
+		func() error {
+			if foo != "value of foo" || bar != "value of bar" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+}
+
+func TestOperatorIncludeCycle(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+
+	if err := matchErrorMessage(
+		a.Parse("include=[testdata/cycle.test]"),
+		`cyclical include dependency with file "testdata/cycle.test"`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorReset(t *testing.T) {
+	a := getParser()
+	var x uint8
+	a.Def("x", &x)
+	if err := matchResult(
+		a.Parse("$X=42 reset=[X] $X=255 x=$$X --=[x=100]"),
+		func() error {
+			if x != 255 {
+				return fmt.Errorf("x not 255, but %d", x)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorImport(t *testing.T) {
+	a := getParser()
+	gopath := ""
+	path := ""
+	a.Def("gopath", &gopath)
+	a.Def("path", &path)
+	if err := matchResult(
+		a.Parse("import=[PATH GOPATH GOBBLEDYGOOK] gopath=$$GOPATH path=$$PATH"),
+		func() error {
+			// just testing for no error
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	// capture standard error into a string
+	stderr := os.Stderr
+	r, w, e := os.Pipe()
+	if e != nil {
+		t.Errorf("meta error opening pipe: %v", e)
+	}
+	os.Stderr = w
+	ch := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		_, e := io.Copy(&buf, r)
+		r.Close()
+		if e != nil {
+			t.Errorf("meta error copying from pipe: %v", e)
+		}
+		ch <- buf.String()
+	}()
+	defer func() {
+		w.Close()
+		os.Stderr = stderr
+		out := <-ch
+		if strings.Index(out, "testing...") != 0 ||
+			strings.Index(out, "GOPATH (R)") < 0 ||
+			strings.Index(out, "PATH (R)") < 0 ||
+			strings.Index(out, "GOBBLEDYGOOK (U)") < 0 {
+			t.Errorf("unexpected output of dump: %s", out)
+		}
+	}()
+
+	err := a.Parse("dump=[comment=[testing...] GOPATH PATH GOBBLEDYGOOK]")
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
 }
 
 func TestArgsPrintDoc(t *testing.T) {

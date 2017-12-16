@@ -2,14 +2,19 @@
 
 ### Unreleased
 
-Built-in operators:
+* Document operators in README file
+* Implement key selection in include operator
 
-* condition
-* dump
-* import
-* include
-* reset
-* skip
+### v0.2.0 (2017-12-16)
+
+Add built-in operators:
+
+* cond (parses on condition)
+* dump (helps debugging)
+* import (imports environment variables as symbols)
+* include (includes a file)
+* reset (resets symbols)
+* -- (skips value, kind of comment)
 
 ### v0.1.2 (2017-12-15)
 

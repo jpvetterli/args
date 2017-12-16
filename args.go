@@ -17,6 +17,7 @@ type Parser struct {
 	doc     []string
 	targets map[interface{}]bool // duplicate detection
 	symbols symtab
+	cycle   map[string]bool // include cycle detector
 }
 
 // NewParser returns a Parser with a configuration of special characters.
@@ -32,6 +33,7 @@ func NewParser(configuration *Specials) *Parser {
 		doc:     make([]string, 0),
 		targets: make(map[interface{}]bool),
 		symbols: newSymtab(configuration.SymbolPrefix()),
+		cycle:   make(map[string]bool),
 	}
 }
 
@@ -67,6 +69,9 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	}
 	if err := a.validate(name); err != nil {
 		panic(err)
+	}
+	if a.operator(name) != nil {
+		panic(fmt.Errorf(`parameter name "%s" is the name of an operator`, name))
 	}
 	p := Param{dict: a, name: name, target: target}
 
@@ -126,6 +131,15 @@ loop:
 			if err != nil {
 				return err
 			}
+		}
+
+		operator := a.operator(nv.Name)
+		if operator != nil {
+			err := operator.handle(nv.Value)
+			if err != nil {
+				return err
+			}
+			continue loop
 		}
 
 		// if a symbol definition add to symbol table

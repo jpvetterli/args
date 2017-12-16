@@ -1,0 +1,4 @@
+-- =[this is for testing include cycle detection]
+foo=[value of foo]
+bar=[value of bar]
+include=[testdata/cycle.test]
