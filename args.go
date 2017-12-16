@@ -408,7 +408,7 @@ func (p *Param) Split(regex string) *Param {
 	var err error
 	p.splitter, err = regexp.Compile(regex)
 	if err != nil {
-		panic(fmt.Errorf(`compilation of split expression "%s" for parameter "%s" failed (%s)`, regex, p.name, err.Error()))
+		panic(fmt.Errorf(`compilation of split expression "%s" for parameter "%s" failed: %v`, regex, p.name, err))
 	}
 	return p
 }
