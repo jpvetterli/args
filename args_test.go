@@ -68,7 +68,7 @@ func TestParamSplit1(t *testing.T) {
 
 func TestParamSplit2(t *testing.T) {
 	a := getParser()
-	defer panicHandler("compilation of split expression \"***\" for parameter \"x\" failed (error parsing regexp: missing argument to repetition operator: `*`)", t)
+	defer panicHandler("compilation of split expression \"***\" for parameter \"x\" failed: error parsing regexp: missing argument to repetition operator: `*`", t)
 	var x []uint8
 	a.Def("x", &x).Split("***")
 }
@@ -790,6 +790,19 @@ func TestOperatorInclude(t *testing.T) {
 
 }
 
+func TestOperatorIncludeNoAccess(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+
+	err := a.Parse("include=[/root/foo.txt]")
+	if err == nil || strings.Index(err.Error(), "permission denied") < 0 {
+		t.Errorf("unexpected error message: %s", err.Error())
+	}
+}
+
 func TestOperatorIncludeCycle(t *testing.T) {
 	a := getParser()
 	foo := ""
@@ -801,6 +814,57 @@ func TestOperatorIncludeCycle(t *testing.T) {
 		a.Parse("include=[testdata/cycle.test]"),
 		`cyclical include dependency with file "testdata/cycle.test"`,
 	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeNoExtrac(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+
+	if err := matchErrorMessage(
+		a.Parse("include=[testdata/include.test extractor=[irrelevant]]"),
+		`include: specify extractor only with keys parameter`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeKeys1(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("include=[testdata/foreign1.test keys=[user=sym1 password]] foo=$$sym1 bar=$$password"),
+		func() error {
+			if foo != "u648" || bar != "!=.sesam567" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeKeys2(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse(`include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=sym1 password]] foo=$$sym1 bar=$$password`),
+		func() error {
+			if foo != "u649" || bar != "!=.sesam568" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
 		t.Error(err.Error())
 	}
 }

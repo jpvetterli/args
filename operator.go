@@ -1,10 +1,13 @@
 package args
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 type operator interface {
@@ -165,12 +168,16 @@ type includeOperator struct {
 }
 
 func (o *includeOperator) handle(value string) error {
-	// TODO: implement key selection mode
 	local := NewParser(nil)
 	filename := ""
+	keys := ""
+	extractor := ""
 	local.Def("", &filename)
+	local.Def("keys", &keys).Opt()
+	local.Def("extractor", &extractor).Opt()
 	local.Parse(value)
 
+	// detect cycles using canonical file name
 	path, err := filepath.Abs(filename)
 	if err != nil {
 		return err
@@ -183,11 +190,72 @@ func (o *includeOperator) handle(value string) error {
 		delete(o.parser.cycle, path)
 	}()
 
-	data, err := ioutil.ReadFile(path)
+	// standard mode: parse the file
+	if len(keys) == 0 {
+		if len(extractor) > 0 {
+			return fmt.Errorf("include: specify extractor only with keys parameter")
+		}
+		data, e := ioutil.ReadFile(path)
+		if e != nil {
+			return fmt.Errorf("include: %v", e)
+		}
+		return o.parser.Parse(string(data))
+	}
+
+	// key selection mode
+
+	if len(extractor) == 0 {
+		extractor = `\s*(\S+)\s*=\s*(\S+)\s*`
+	}
+
+	re, err := regexp.Compile(extractor)
+	if err != nil {
+		panic(fmt.Errorf(`compilation of extractor "%s" failed: %v`, extractor, err))
+	}
+
+	kvs, err := pairs(o.parser.custom, []byte(keys))
 	if err != nil {
 		return err
 	}
-	return o.parser.Parse(string(data))
+
+	kvmap := make(map[string]string)
+	for _, kv := range kvs {
+		if len(kv.Name) == 0 {
+			kvmap[kv.Value] = kv.Value
+		} else {
+			kvmap[kv.Name] = kv.Value
+		}
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+
+	r := bufio.NewReader(f)
+
+loop:
+	for {
+		line, e := r.ReadString('\n')
+		switch e {
+		case nil:
+		case io.EOF:
+			if len(line) == 0 {
+				break loop
+			}
+		default:
+			return e
+		}
+
+		capture := re.FindStringSubmatch(line)
+		if len(capture) == 3 {
+			if name, ok := kvmap[capture[1]]; ok {
+				o.parser.symbols.put(string(o.parser.custom.SymbolPrefix())+name, capture[2])
+			}
+		}
+	}
+
+	return nil
 }
 
 // resetOperator implements reset. reset takes a series of values, which it

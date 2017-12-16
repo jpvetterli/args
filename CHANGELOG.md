@@ -3,7 +3,10 @@
 ### Unreleased
 
 * Document operators in README file
-* Implement key selection in include operator
+
+### v0.2.1 (2017-12-16)
+
+Implement key selection and custom regular expression in include operator.
 
 ### v0.2.0 (2017-12-16)
 
