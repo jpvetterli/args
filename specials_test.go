@@ -6,6 +6,11 @@ import (
 	"github.com/jpvetterli/args"
 )
 
+func TestNewSpecialsPanic(t *testing.T) {
+	defer panicHandler(`cannot use ' ' as a special character`, t)
+	args.NewSpecials(`$ []\`)
+}
+
 func TestNewSpecialsPanic1(t *testing.T) {
 	defer panicHandler(`cannot use 'E' as a special character`, t)
 	args.NewSpecials(`$=[]E`)
