@@ -49,9 +49,9 @@ func (t *symtab) put(s, value string) bool {
 }
 
 // get returns the address of the symval for a symbol in the symbol table. It
-// returns nil and no error when the symbol is not in the table. It returns nil
-// and an error when a cyclical dependency is detected. The method updates the
-// symbol table.
+// returns nil and no error when the symbol is not in the table.  It resolves
+// the symbol when not done yet. It returns nil and an error when a cyclical
+// dependency is detected. The method updates the symbol table.
 func (t *symtab) get(symbol string) (value *symval, err error) {
 	if _, ok := t.cycle[symbol]; ok {
 		return nil, fmt.Errorf(`cyclical symbol definition detected: "%s"`, symbol)
