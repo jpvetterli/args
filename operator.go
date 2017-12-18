@@ -60,11 +60,11 @@ func (a *Parser) operator(name string) operator {
 
 // condOperator implements cond. cond has two mandatory parameters, "if" and
 // "then" and an optional one, "else". All three take exactly one value. The
-// value of "if" is interpreted as a symbol name (without the symbol prefix). If
-// the symbol exists, and its resolved value is not empty, then the value of
-// "then" is parsed, else the value of "else" is parsed, if it is specified.
-// Note that if the value of "if" cannot be resolved, it is not empty, and the
-// value of "then" is parsed.
+// value of "if" is interpreted as a parameter name or symbol. The value of "if"
+// evaluates to true if the symbol exists or if the parameter has been set at
+// least once. If the parameter has no been defined, an error occurs. When the
+// value of "if" is true then the value of "then" is parsed, else the value of
+// "else" is parsed, if specified.
 type condOperator struct {
 	parser *Parser
 }
@@ -81,11 +81,20 @@ func (o *condOperator) handle(value string) error {
 	if err != nil {
 		return err
 	}
-	v, err := o.parser.symbols.get(condIf)
-	if err != nil {
-		return err
+
+	ifVal, isSymbol := symbol(condIf, o.parser)
+	var cond bool
+
+	if isSymbol {
+		_, cond = o.parser.symbols.table[ifVal]
+	} else {
+		p, ok := o.parser.params[ifVal]
+		if !ok {
+			return fmt.Errorf(`if: parameter "%s" not defined`, ifVal)
+		}
+		cond = ok && p.count > 0
 	}
-	if v != nil && len(v.s) > 0 {
+	if cond {
 		return o.parser.Parse(condThen)
 	}
 	if len(condElse) > 0 {
@@ -95,10 +104,11 @@ func (o *condOperator) handle(value string) error {
 }
 
 // dumpOperator implements dump. dump takes an optional "comment" parameter and
-// a series of anonymous values. It interprets the values as symbols (without
-// the symbol prefix) and prints their names and values line by line on standard
-// error. The value is preceded by R if resolved, else by U. If a comment is
-// specified it is printed first.
+// a series of anonymous values. It interprets the values as parameter names and
+// symbols and prints them line by line on standard error with their current
+// values. The value of a symbol is preceded by R if resolved, else by U. A name
+// or symbol is preceded by ? if undefined. If a comment is specified, it is
+// printed first.
 type dumpOperator struct {
 	parser *Parser
 }
@@ -106,43 +116,57 @@ type dumpOperator struct {
 func (o *dumpOperator) handle(value string) error {
 	local := NewParser(nil)
 	comment := ""
-	var symbols []string
-	local.Def("", &symbols)
+	var names []string
+	local.Def("", &names)
 	local.Def("comment", &comment).Opt()
 	local.Parse(value)
 	if len(comment) > 0 {
 		fmt.Fprintln(os.Stderr, comment)
 	}
-	for _, s := range symbols {
-		if v, ok := o.parser.symbols.table[s]; ok {
-			r := 'U'
-			if v.resolved {
-				r = 'R'
+	for _, n := range names {
+		if s, ok := symbol(n, o.parser); ok {
+			if v, ok := o.parser.symbols.table[s]; ok {
+				r := 'U'
+				if v.resolved {
+					r = 'R'
+				}
+				fmt.Fprintf(os.Stderr, "%s %c %s\n", n, r, v.s)
+			} else {
+				fmt.Fprintf(os.Stderr, "? %s\n", n)
 			}
-			fmt.Fprintf(os.Stderr, "%s (%c) %s\n", s, r, v.s)
+		} else {
+			if p, ok := o.parser.params[n]; ok {
+				fmt.Fprintf(os.Stderr, "%s %v\n", n, reflValue(p.target))
+			} else {
+				fmt.Fprintf(os.Stderr, "? %s\n", n)
+			}
 		}
 	}
 	return nil
 }
 
 // importOperator implements import. import takes a series of values, which it
-// interprets as keys of environment variables. It gets the corresponding values
-// from the environment and puts them in the symbol table unless there is
-// already an entry with the same name. If they are not in the environment empty
-// values are used.
+// interprets as symbols. For each symbol a value is taken from the environment
+// variable with the corresponding name (smybol prefix removed). The value is
+// inserted in the symbol table unless there is already an entry for the symbol
+// ("first wins" principle). If the environment variable does not exist,nothing
+// is done.
 type importOperator struct {
 	parser *Parser
 }
 
 func (o *importOperator) handle(value string) error {
 	local := NewParser(nil)
-	var keys []string
-	local.Def("", &keys)
+	var symbols []string
+	local.Def("", &symbols)
 	local.Parse(value)
-	for _, k := range keys {
-		v := os.Getenv(k)
-		if _, exists := o.parser.symbols.table[k]; !exists {
-			o.parser.symbols.table[k] = &symval{s: v}
+	for _, sym := range symbols {
+		if k, isSymbol := symbol(sym, o.parser); isSymbol {
+			if v, ok := os.LookupEnv(k); ok {
+				o.parser.symbols.put(sym, v)
+			}
+		} else {
+			return fmt.Errorf(`import: "%s": symbol prefix missing (%c)`, sym, o.parser.custom.SymbolPrefix())
 		}
 	}
 	return nil
@@ -157,12 +181,15 @@ func (o *importOperator) handle(value string) error {
 // takes also a "keys" parameter and an optional "extractor" parameter. The
 // value of "keys" is interpreted as a series of standalone keys or
 // key-translation pairs (using the current separator character of the parser).
-// include tries to extract a key-value pair from each line of the file, and if
-// a value is found with a matching key, it is inserted into the symbol table
-// using the key as symbol or using the translation, if specified. The
-// "extractor" parameter specifies a custom regular expression for extracting
-// key-value pairs. The default extractor is \s*(\S+)\s*=\s*(\S+)\s*. It is an
-// error to specify an extractor in basic mode (no keys specified).
+// If there is no translation, the key translates to itself. include  extracts
+// name-value pairs from each line of the file, and if it finds a name matching
+// one of the keys, it uses the value to set a parameter or a symbol depending
+// on the translated key. As always a symbol is set only if it does not already
+// exist ("first wins" principle).
+//
+//The "extractor" parameter specifies a custom regular expression for extracting
+//key-value pairs. The default extractor is \s*(\S+)\s*=\s*(\S+)\s*. It is an
+//error to specify an extractor in basic mode (no keys specified).
 type includeOperator struct {
 	parser *Parser
 }
@@ -250,7 +277,7 @@ loop:
 		capture := re.FindStringSubmatch(line)
 		if len(capture) == 3 {
 			if name, ok := kvmap[capture[1]]; ok {
-				o.parser.symbols.put(string(o.parser.custom.SymbolPrefix())+name, capture[2])
+				o.parser.setValue(name, capture[2])
 			}
 		}
 	}
@@ -259,8 +286,8 @@ loop:
 }
 
 // resetOperator implements reset. reset takes a series of values, which it
-// interprets as symbols (without the symbol prefix) and removes them from the
-// symbol table, if present.
+// interprets as symbols and removes them from the symbol table, if present. An
+// error occurs if values are not symbols.
 type resetOperator struct {
 	parser *Parser
 }
@@ -271,7 +298,11 @@ func (o *resetOperator) handle(value string) error {
 	local.Def("", &symbols)
 	local.Parse(value)
 	for _, s := range symbols {
-		delete(o.parser.symbols.table, s)
+		if sym, isSymbol := symbol(s, o.parser); isSymbol {
+			delete(o.parser.symbols.table, sym)
+		} else {
+			return fmt.Errorf(`reset: symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
+		}
 	}
 	return nil
 }
@@ -283,4 +314,14 @@ type skipOperator struct {
 
 func (o *skipOperator) handle(value string) error {
 	return nil
+}
+
+// symbols returns s without the symbol prefix and true if s starts with the
+// symbol prefix else it returns s and false.
+func symbol(s string, p *Parser) (string, bool) {
+	r := []rune(s)
+	if len(r) > 1 && r[0] == p.custom.SymbolPrefix() {
+		return string(r[1:]), true
+	}
+	return s, false
 }

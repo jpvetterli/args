@@ -142,20 +142,26 @@ loop:
 			continue loop
 		}
 
-		// if a symbol definition add to symbol table
-		if !a.symbols.put(nv.Name, nv.Value) {
-			// not a symbol, parse parameter value, taking care of count and limit
-			if p, ok := a.params[nv.Name]; ok {
-				err := p.parseValues(p.split(nv.Value))
-				if err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf(`parameter not defined: "%s"`, nv.Name)
-			}
+		err := a.setValue(nv.Name, nv.Value)
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
+// setValue adds value to symbol table or set parameter value
+func (a *Parser) setValue(name, value string) error {
+	if !a.symbols.put(name, value) {
+		if p, ok := a.params[name]; ok {
+			err := p.parseValues(p.split(value))
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf(`parameter not defined: "%s"`, name)
+		}
+	}
 	return nil
 }
 

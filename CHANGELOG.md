@@ -2,7 +2,13 @@
 
 ### Unreleased
 
-* Document operators in README file
+* Document operators
+* INCOMPATIBLE CHANGE COMING SOON: NewParser will not take an argument any more
+
+### v0.2.2 (2017-12-18)
+
+Modify operators (cond, dump, import, include, reset) to take also parameter
+names, not only symbols. (jp)
 
 ### v0.2.1 (2017-12-16)
 

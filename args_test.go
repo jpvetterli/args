@@ -749,7 +749,7 @@ func TestOperatorCond(t *testing.T) {
 	foo := ""
 	a.Def("foo", &foo)
 	if err := matchResult(
-		a.Parse("cond=[if=[UNDEF] then=[foo=foo] else=[foo=bar]]"),
+		a.Parse("cond=[if=[$UNDEF] then=[foo=foo] else=[foo=bar]]"),
 		func() error {
 			if foo != "bar" {
 				return fmt.Errorf(`expected "bar" not "%s"`, foo)
@@ -760,10 +760,43 @@ func TestOperatorCond(t *testing.T) {
 	}
 
 	if err := matchResult(
-		a.Parse("$DEF=1 cond=[if=[DEF] then=[foo=foo] else=[foo=bar]]"),
+		a.Parse("$DEF=1 cond=[if=[$DEF] then=[foo=foo] else=[foo=bar]]"),
 		func() error {
 			if foo != "foo" {
 				return fmt.Errorf(`expected "foo" not "%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := matchErrorMessage(
+		a.Parse("cond=[if=[xyz] then=[foo=foo] else=[foo=bar]]"),
+		`if: parameter "xyz" not defined`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+
+	xyz := ""
+	foo = ""
+	a.Def("xyz", &xyz).Opt()
+	if err := matchResult(
+		a.Parse("cond=[if=[xyz] then=[foo=foo] else=[foo=baz]]"),
+		func() error {
+			if foo != "baz" {
+				return fmt.Errorf(`expected "baz" not "%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	// xyz gets an empty value, but an empty value is a value
+	if err := matchResult(
+		a.Parse("xyz = [] cond=[if=[xyz] then=[foo=fou] else=[foo=baz]]"),
+		func() error {
+			if foo != "fou" {
+				return fmt.Errorf(`expected "fou" not "%s"`, foo)
 			}
 			return nil
 		}); err != nil {
@@ -835,15 +868,15 @@ func TestOperatorIncludeNoExtrac(t *testing.T) {
 
 func TestOperatorIncludeKeys1(t *testing.T) {
 	a := getParser()
-	foo := ""
-	bar := ""
-	a.Def("foo", &foo)
-	a.Def("bar", &bar)
+	user := ""
+	password := ""
+	a.Def("user", &user)
+	a.Def("password", &password)
 	if err := matchResult(
-		a.Parse("include=[testdata/foreign1.test keys=[user=sym1 password]] foo=$$sym1 bar=$$password"),
+		a.Parse("include=[testdata/foreign1.test keys=[user password]]"),
 		func() error {
-			if foo != "u648" || bar != "!=.sesam567" {
-				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			if user != "u648" || password != "!=.sesam567" {
+				return fmt.Errorf(`unexpected results: user="%s" password="%s"`, user, password)
 			}
 			return nil
 		}); err != nil {
@@ -858,7 +891,43 @@ func TestOperatorIncludeKeys2(t *testing.T) {
 	a.Def("foo", &foo)
 	a.Def("bar", &bar)
 	if err := matchResult(
-		a.Parse(`include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=sym1 password]] foo=$$sym1 bar=$$password`),
+		a.Parse("include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password"),
+		func() error {
+			if foo != "u648" || bar != "!=.sesam567" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeKeys3(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("$sym1=usym include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password"),
+		func() error {
+			if foo != "usyme" || bar != "!=.sesam567" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeKeys4(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse(`include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password`),
 		func() error {
 			if foo != "u649" || bar != "!=.sesam568" {
 				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
@@ -874,7 +943,7 @@ func TestOperatorReset(t *testing.T) {
 	var x uint8
 	a.Def("x", &x)
 	if err := matchResult(
-		a.Parse("$X=42 reset=[X] $X=255 x=$$X --=[x=100]"),
+		a.Parse("$X=42 reset=[$X] $X=255 x=$$X --=[x=100]"),
 		func() error {
 			if x != 255 {
 				return fmt.Errorf("x not 255, but %d", x)
@@ -889,10 +958,12 @@ func TestOperatorImport(t *testing.T) {
 	a := getParser()
 	gopath := ""
 	path := ""
+	sl := []float64{}
 	a.Def("gopath", &gopath)
 	a.Def("path", &path)
+	a.Def("sl", &sl)
 	if err := matchResult(
-		a.Parse("import=[PATH GOPATH GOBBLEDYGOOK] gopath=$$GOPATH path=$$PATH"),
+		a.Parse("$PATH=locked import=[$PATH $GOPATH $GOBBLEDYGOOK] gopath=$$GOPATH path=$$PATH sl=1 sl=0.5 sl=42"),
 		func() error {
 			// just testing for no error
 			return nil
@@ -922,14 +993,17 @@ func TestOperatorImport(t *testing.T) {
 		os.Stderr = stderr
 		out := <-ch
 		if strings.Index(out, "testing...") != 0 ||
-			strings.Index(out, "GOPATH (R)") < 0 ||
-			strings.Index(out, "PATH (R)") < 0 ||
-			strings.Index(out, "GOBBLEDYGOOK (U)") < 0 {
+			strings.Index(out, "sl [1 0.5 42]") < 0 ||
+			strings.Index(out, "? xyzzy") < 0 ||
+			strings.Index(out, "$GOPATH R ") < 0 ||
+			strings.Index(out, "$PATH R locked") < 0 ||
+			strings.Index(out, "? $GOBBLEDYGOOK") < 0 ||
+			strings.Index(out, "? $XYZZY") < 0 {
 			t.Errorf("unexpected output of dump: %s", out)
 		}
 	}()
 
-	err := a.Parse("dump=[comment=[testing...] GOPATH PATH GOBBLEDYGOOK]")
+	err := a.Parse("dump=[comment=[testing...] sl xyzzy $GOPATH $PATH $GOBBLEDYGOOK $XYZZY]")
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
