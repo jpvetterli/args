@@ -4,6 +4,10 @@
 
 * INCOMPATIBLE CHANGE COMING SOON: NewParser will not take an argument any more
 
+### v0.3.1 (2017-12-19)
+
+Documentation fixes.
+
 ### v0.3.0 (2017-12-19)
 
 All modifications are backward compatible.
