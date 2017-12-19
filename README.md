@@ -2,7 +2,24 @@
 
 Define and parse command line arguments.
 
-Parameters are defined in one-liners, with synonyms, documentation, and other configuration details. Values are directly taken into simple variables, arrays or slices. Arbitrary types are easily supported like in this example:
+The package keeps simple things simple and makes complicated things possible.
+For example, this is a simple program argument:
+```
+  help
+```
+and this is something more complicated:
+```
+  include=[
+    /home/u649/.db.conf
+    extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*]
+    keys=[user=usr password=$PASS]
+  ]
+```
+With package args, both examples are handled without any application logic.
+
+Parameters are defined in one-liners, with synonyms, documentation, and other
+configuration details. Values are directly taken into simple variables, arrays
+or slices. Arbitrary types are easily supported like in this example:
 
 ```
 a := args.NewParser(nil)
@@ -30,4 +47,5 @@ a.Parse("time=[2015-06-30 15:32:00]")
 fmt.Println(target.String()) // prints: 2015-06-30 15:32:00 +0000 UTC
 ```
 
-Complete information and examples in the package documentation.
+More information and examples are available from the
+[package documentation](https://godoc.org/github.com/jpvetterli/args).
