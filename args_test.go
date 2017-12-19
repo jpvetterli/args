@@ -229,6 +229,54 @@ func TestArgsTypesSingleValue(t *testing.T) {
 	}
 }
 
+func TestArgsTypesSingleEmptyValue(t *testing.T) {
+	a := getParser()
+	empty := ""
+	a.Def("", &empty)
+	if err := matchResult(
+		a.Parse("[]"),
+		func() error {
+			if empty != "" {
+				return fmt.Errorf(`empty not "", but %s`, empty)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestArgsTypesSingleEmptyBool(t *testing.T) {
+	a := getParser()
+	empty := false
+	a.Def("", &empty)
+	if err := matchResult(
+		a.Parse("[]"),
+		func() error {
+			if !empty {
+				return fmt.Errorf("empty false")
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestArgsTypesSingleEmptySlice(t *testing.T) {
+	a := getParser()
+	empty := []bool{}
+	a.Def("", &empty)
+	if err := matchResult(
+		a.Parse("[] [] []"),
+		func() error {
+			if !reflect.DeepEqual(empty, []bool{true, true, true}) {
+				return fmt.Errorf("unexpected: %v", empty)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestArgsTypesMultiValue(t *testing.T) {
 	a := getParser()
 	var x []uint8
@@ -454,7 +502,7 @@ func TestArgsStandaloneValue(t *testing.T) {
 	sl = []string{}
 	a.Def("", &sl)
 	// same as previous but anonymous
-	err = a.Parse(`$X = bar foo \= \[x: \$$X\\\]`)
+	err = a.Parse(`$X = bar foo \= \[x: \$$X\]`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
@@ -465,7 +513,6 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a = getParser()
 	sl = []string{}
 	a.Def("", &sl)
-	// same as previous but anonymous
 	err = a.Parse(`$X = bar \$$X \\\= \[x:\ :x\]`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
@@ -477,7 +524,7 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a = getParser()
 	sl = []string{}
 	a.Def("", &sl)
-	err = a.Parse(`$X = bar foo \= \[x: \$$X\\\\`)
+	err = a.Parse(`$X = bar foo \= \[x: \$$X\\`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
@@ -491,16 +538,33 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a.Def("", &y).Verbatim()
 }
 
-func TestArgsRecursive(t *testing.T) {
+func TestArgsSimpleMacro(t *testing.T) {
 	a := getParser()
-	foo := ""
+	foo := []string{}
 	a.Def("foo", &foo)
-	err := a.Parse("$quux=QUUX $macro=[foo=[bar $$quux]] $$macro")
+	err := a.Parse(
+		"$macro=[foo=[number $$count]] $count=1 macro=[$macro]" +
+			" reset=$count $count=2 macro=$macro")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if foo != "bar QUUX" {
-		t.Errorf("unexpected value: %s", foo)
+	if !reflect.DeepEqual(foo, []string{"number 1", "number 2"}) {
+		t.Errorf("unexpected values: %v", foo)
+	}
+}
+
+func TestArgsMacro(t *testing.T) {
+	a := getParser()
+	foo := []string{}
+	a.Def("foo", &foo)
+	err := a.Parse(
+		"$quux=QUUX $macro1=[foo=] $macro2=[[bar $$quux]] macro=[$macro1 $macro2]" +
+			" reset=$quux $quux=BAF macro=[$macro1 $macro2]")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(foo, []string{"bar QUUX", "bar BAF"}) {
+		t.Errorf("unexpected values: %v", foo)
 	}
 }
 
@@ -772,7 +836,7 @@ func TestOperatorCond(t *testing.T) {
 
 	if err := matchErrorMessage(
 		a.Parse("cond=[if=[xyz] then=[foo=foo] else=[foo=bar]]"),
-		`if: parameter "xyz" not defined`,
+		`cond/if: parameter "xyz" not defined`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -911,7 +975,7 @@ func TestOperatorIncludeKeys3(t *testing.T) {
 	if err := matchResult(
 		a.Parse("$sym1=usym include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password"),
 		func() error {
-			if foo != "usyme" || bar != "!=.sesam567" {
+			if foo != "usym" || bar != "!=.sesam567" {
 				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
 			}
 			return nil
@@ -938,6 +1002,26 @@ func TestOperatorIncludeKeys4(t *testing.T) {
 	}
 }
 
+func TestOperatorIncludeKeys5(t *testing.T) {
+	a := getParser()
+	usr := ""
+	pw := ""
+	a.Def("usr", &usr)
+	a.Def("pw", &pw)
+	input := `include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$$PASS dump=[usr $PASS]`
+	expected := "usr u649\n$PASS R !=.sesam568\n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
+	}
+	if usr != "u649" || pw != "!=.sesam568" {
+		t.Errorf(`unexpected results: foo="%s" bar="%s"`, usr, pw)
+	}
+}
+
 func TestOperatorReset(t *testing.T) {
 	a := getParser()
 	var x uint8
@@ -954,58 +1038,37 @@ func TestOperatorReset(t *testing.T) {
 	}
 }
 
-func TestOperatorImport(t *testing.T) {
+func TestOperatorDump(t *testing.T) {
+	os.Setenv("TESTENV", "value of TESTENV")
+
 	a := getParser()
-	gopath := ""
-	path := ""
-	sl := []float64{}
-	a.Def("gopath", &gopath)
-	a.Def("path", &path)
-	a.Def("sl", &sl)
-	if err := matchResult(
-		a.Parse("$PATH=locked import=[$PATH $GOPATH $GOBBLEDYGOOK] gopath=$$GOPATH path=$$PATH sl=1 sl=0.5 sl=42"),
-		func() error {
-			// just testing for no error
-			return nil
-		}); err != nil {
-		t.Error(err.Error())
-	}
-
-	// capture standard error into a string
-	stderr := os.Stderr
-	r, w, e := os.Pipe()
-	if e != nil {
-		t.Errorf("meta error opening pipe: %v", e)
-	}
-	os.Stderr = w
-	ch := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		_, e := io.Copy(&buf, r)
-		r.Close()
-		if e != nil {
-			t.Errorf("meta error copying from pipe: %v", e)
-		}
-		ch <- buf.String()
-	}()
-	defer func() {
-		w.Close()
-		os.Stderr = stderr
-		out := <-ch
-		if strings.Index(out, "testing...") != 0 ||
-			strings.Index(out, "sl [1 0.5 42]") < 0 ||
-			strings.Index(out, "? xyzzy") < 0 ||
-			strings.Index(out, "$GOPATH R ") < 0 ||
-			strings.Index(out, "$PATH R locked") < 0 ||
-			strings.Index(out, "? $GOBBLEDYGOOK") < 0 ||
-			strings.Index(out, "? $XYZZY") < 0 {
-			t.Errorf("unexpected output of dump: %s", out)
-		}
-	}()
-
-	err := a.Parse("dump=[comment=[testing...] sl xyzzy $GOPATH $PATH $GOBBLEDYGOOK $XYZZY]")
+	empty := ""
+	a.Def("", &empty)
+	input := "import=[$TESTENV $NONESUCH] []=[$$TESTENV] dump=[$TESTENV $NONESUCH []]"
+	expected := "$TESTENV R value of TESTENV\n? $NONESUCH\n[] value of TESTENV\n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
+	}
+}
+
+func TestOperatorDumpWithCond(t *testing.T) {
+	a := getParser()
+	empty := ""
+	a.Def("", &empty).Opt()
+	input := "import=[$HOMEY $NONESUCH] " +
+		"cond=[if=[$HOMEY] then=[$$HOMEY] else=[dump=[comment=[$$HOMEY not set]]]] " +
+		"dump=[$HOMEY $NONESUCH []]"
+	expected := "$$HOMEY not set\n? $HOMEY\n? $NONESUCH\n[] \n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
 	}
 }
 
@@ -1018,6 +1081,7 @@ func TestArgsPrintDoc(t *testing.T) {
 	}
 	b := bytes.Buffer{}
 	a.PrintDoc(&b)
+	a.PrintConfig(&b)
 	expected := `Usage: foo <parameters> <filename> ...
 The foo command does things.
 
@@ -1056,8 +1120,83 @@ Special characters:
 				commonPrefix(b.String(), expected) + "\n" +
 				"=== diff (end) ===")
 	}
-	// NOTE: a.PrintDoc(os.Stdout)
+	// NOTE: fmt.Println(b.String());	a.PrintDocDetails(os.Stdout)
 	a = nil // reclaim memory
+}
+
+func TestArgsPrintDocDefaults(t *testing.T) {
+	a := getParser()
+	b := bytes.Buffer{}
+	a.PrintDoc(&b)
+	expected := "the command takes no parameter\n"
+	if b.String() != expected {
+		t.Errorf("PrintDoc output does not match")
+		// NOTE:
+		fmt.Println(
+			"=== diff (begin) ===\n" +
+				commonPrefix(b.String(), expected) + "\n" +
+				"=== diff (end) ===")
+	}
+	// NOTE: a.PrintDoc(os.Stdout)
+
+	b.Reset()
+	a.PrintDoc(&b, "foo")
+	expected = "Usage: foo\n"
+	if b.String() != expected {
+		t.Errorf("PrintDoc output does not match")
+		// NOTE:
+		fmt.Println(
+			"=== diff (begin) ===\n" +
+				commonPrefix(b.String(), expected) + "\n" +
+				"=== diff (end) ===")
+	}
+	// NOTE: fmt.Println(b.String())
+
+	b.Reset()
+	a.PrintDoc(&b, "foo", "bar", 42)
+	expected = "Usage: [foo bar 42]\n"
+	if b.String() != expected {
+		t.Errorf("PrintDoc output does not match")
+		// NOTE:
+		fmt.Println(
+			"=== diff (begin) ===\n" +
+				commonPrefix(b.String(), expected) + "\n" +
+				"=== diff (end) ===")
+	}
+	// NOTE: fmt.Println(b.String())
+
+	a = getParser()
+	s := ""
+	a.Def("what", &s)
+	b.Reset()
+	a.PrintDoc(&b)
+	expected =
+		"the command takes these parameters:\n" +
+			"  what     type: string\n"
+	if b.String() != expected {
+		t.Errorf("PrintDoc output does not match")
+		// NOTE:
+		fmt.Println(
+			"=== diff (begin) ===\n" +
+				commonPrefix(b.String(), expected) + "\n" +
+				"=== diff (end) ===")
+	}
+	// NOTE: fmt.Println(b.String())
+
+	b.Reset()
+	a.PrintDoc(&b, "foo")
+	expected =
+		"Usage: foo parameters...\n\nParameters:\n" +
+			"  what     type: string\n"
+	if b.String() != expected {
+		t.Errorf("PrintDoc output does not match")
+		// NOTE:
+		fmt.Println(
+			"=== diff (begin) ===\n" +
+				commonPrefix(b.String(), expected) + "\n" +
+				"=== diff (end) ===")
+	}
+	// NOTE: fmt.Println(b.String())
 }
 
 // helpers
@@ -1284,6 +1423,38 @@ func matchResult(err error, test func() error) error {
 		return e
 	}
 	return nil
+}
+
+func captureOutput(f func() error, output *os.File) (result string, err error) {
+	result = ""
+	err = nil
+
+	stderr := output
+	r, w, e := os.Pipe()
+	if e != nil {
+		err = fmt.Errorf("meta error opening pipe: %v", e)
+		return
+	}
+	os.Stderr = w
+	ch := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		_, e := io.Copy(&buf, r)
+		r.Close()
+		if e != nil {
+			err = fmt.Errorf("meta error copying from pipe: %v", e)
+			return
+		}
+		ch <- buf.String()
+	}()
+	defer func() {
+		w.Close()
+		os.Stderr = stderr
+		result = <-ch
+	}()
+
+	err = f()
+	return
 }
 
 func getParser() *args.Parser {

@@ -11,8 +11,8 @@ import (
 func ExampleParser_PrintDoc() {
 	a := args.NewParser(nil)
 	a.Doc(
-		"Usage: foo parameter...",
-		"The foo command does nothing but is has many parameters.",
+		"Usage: %s parameter...\n",
+		"The command does nothing but is has many parameters.",
 		"",
 		"Parameters:")
 
@@ -32,11 +32,12 @@ func ExampleParser_PrintDoc() {
 	a.Def("slice", &sl).Doc("slice is a parameter taking any number of values")
 	a.Def("array", &ar).Doc("array is a parameter taking 4 values").Split(`\s*:\s*`)
 
-	a.PrintDoc(os.Stdout)
+	a.PrintDoc(os.Stdout, "foo")
+	a.PrintConfig(os.Stdout)
 
 	// output:
 	// Usage: foo parameter...
-	// The foo command does nothing but is has many parameters.
+	// The command does nothing but is has many parameters.
 	//
 	// Parameters:
 	//   (nameless), file
@@ -127,7 +128,7 @@ func ExampleParam_Verbatim() {
 		"cmd2=[$ARG1=a $ARG2=b $$MACRO]")
 
 	for _, s := range []string{cmd1, cmd2} {
-		a = getParser() // IMPORTANT: get a new parser
+		a = args.NewParser(nil) // IMPORTANT: get a new parser
 		arg1 := ""
 		arg2 := ""
 		a.Def("arg1", &arg1)

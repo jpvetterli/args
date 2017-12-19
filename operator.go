@@ -21,11 +21,13 @@ const (
 	opDump
 	opImport
 	opInclude
+	opMacro
 	opReset
 	opSkip
 )
 
 var dispatch = map[string]op{
+	"macro":   opMacro,
 	"cond":    opcond,
 	"dump":    opDump,
 	"import":  opImport,
@@ -47,6 +49,8 @@ func (a *Parser) operator(name string) operator {
 			return &dumpOperator{parser: a}
 		case opImport:
 			return &importOperator{parser: a}
+		case opMacro:
+			return &macroOperator{parser: a}
 		case opReset:
 			return &resetOperator{parser: a}
 		case opSkip:
@@ -59,12 +63,12 @@ func (a *Parser) operator(name string) operator {
 }
 
 // condOperator implements cond. cond has two mandatory parameters, "if" and
-// "then" and an optional one, "else". All three take exactly one value. The
-// value of "if" is interpreted as a parameter name or symbol. The value of "if"
-// evaluates to true if the symbol exists or if the parameter has been set at
-// least once. If the parameter has no been defined, an error occurs. When the
-// value of "if" is true then the value of "then" is parsed, else the value of
-// "else" is parsed, if specified.
+// "then" and an optional one, "else". All three take exactly one value, all
+// verbatim. The value of "if" is interpreted as a parameter name or symbol. The
+// value of "if" evaluates to true if the symbol exists or if the parameter has
+// been set at least once. If the parameter has no been defined, an error
+// occurs. When the value of "if" is true then the value of "then" is parsed,
+// else the value of "else" is parsed, if specified.
 type condOperator struct {
 	parser *Parser
 }
@@ -74,9 +78,9 @@ func (o *condOperator) handle(value string) error {
 	condIf := ""
 	condThen := ""
 	condElse := ""
-	local.Def("if", &condIf)
-	local.Def("then", &condThen)
-	local.Def("else", &condElse).Opt()
+	local.Def("if", &condIf).Verbatim()
+	local.Def("then", &condThen).Verbatim()
+	local.Def("else", &condElse).Opt().Verbatim()
 	err := local.Parse(value)
 	if err != nil {
 		return err
@@ -90,7 +94,7 @@ func (o *condOperator) handle(value string) error {
 	} else {
 		p, ok := o.parser.params[ifVal]
 		if !ok {
-			return fmt.Errorf(`if: parameter "%s" not defined`, ifVal)
+			return fmt.Errorf(`cond/if: parameter "%s" not defined`, ifVal)
 		}
 		cond = ok && p.count > 0
 	}
@@ -104,11 +108,11 @@ func (o *condOperator) handle(value string) error {
 }
 
 // dumpOperator implements dump. dump takes an optional "comment" parameter and
-// a series of anonymous values. It interprets the values as parameter names and
-// symbols and prints them line by line on standard error with their current
-// values. The value of a symbol is preceded by R if resolved, else by U. A name
-// or symbol is preceded by ? if undefined. If a comment is specified, it is
-// printed first.
+// a series of anonymous values. All values are taken verbatim. dump interprets
+// the values as parameter names and symbols and prints them line by line on
+// standard error with their current values. The value of a symbol is preceded
+// by R if resolved, else by U. A name or symbol is preceded by ? if undefined.
+// If a comment is specified, it is printed first.
 type dumpOperator struct {
 	parser *Parser
 }
@@ -117,8 +121,8 @@ func (o *dumpOperator) handle(value string) error {
 	local := NewParser(nil)
 	comment := ""
 	var names []string
-	local.Def("", &names)
-	local.Def("comment", &comment).Opt()
+	local.Def("", &names).Verbatim()
+	local.Def("comment", &comment).Opt().Verbatim()
 	local.Parse(value)
 	if len(comment) > 0 {
 		fmt.Fprintln(os.Stderr, comment)
@@ -136,8 +140,14 @@ func (o *dumpOperator) handle(value string) error {
 			}
 		} else {
 			if p, ok := o.parser.params[n]; ok {
+				if len(n) == 0 {
+					n = "[]"
+				}
 				fmt.Fprintf(os.Stderr, "%s %v\n", n, reflValue(p.target))
 			} else {
+				if len(n) == 0 {
+					n = "[]"
+				}
 				fmt.Fprintf(os.Stderr, "? %s\n", n)
 			}
 		}
@@ -145,12 +155,12 @@ func (o *dumpOperator) handle(value string) error {
 	return nil
 }
 
-// importOperator implements import. import takes a series of values, which it
-// interprets as symbols. For each symbol a value is taken from the environment
-// variable with the corresponding name (smybol prefix removed). The value is
-// inserted in the symbol table unless there is already an entry for the symbol
-// ("first wins" principle). If the environment variable does not exist,nothing
-// is done.
+// importOperator implements import. import takes a series of verbatim values,
+// which it interprets as symbols. For each symbol a value is taken from the
+// environment variable with the corresponding name (smybol prefix removed). The
+// value is inserted in the symbol table unless there is already an entry for
+// the symbol ("first wins" principle). If the environment variable does not
+// exist,nothing is done.
 type importOperator struct {
 	parser *Parser
 }
@@ -158,7 +168,7 @@ type importOperator struct {
 func (o *importOperator) handle(value string) error {
 	local := NewParser(nil)
 	var symbols []string
-	local.Def("", &symbols)
+	local.Def("", &symbols).Verbatim()
 	local.Parse(value)
 	for _, sym := range symbols {
 		if k, isSymbol := symbol(sym, o.parser); isSymbol {
@@ -190,6 +200,8 @@ func (o *importOperator) handle(value string) error {
 //The "extractor" parameter specifies a custom regular expression for extracting
 //key-value pairs. The default extractor is \s*(\S+)\s*=\s*(\S+)\s*. It is an
 //error to specify an extractor in basic mode (no keys specified).
+//
+// Keys are taken verbatim, but the file name and the extractor are resolved.
 type includeOperator struct {
 	parser *Parser
 }
@@ -200,7 +212,7 @@ func (o *includeOperator) handle(value string) error {
 	keys := ""
 	extractor := ""
 	local.Def("", &filename)
-	local.Def("keys", &keys).Opt()
+	local.Def("keys", &keys).Opt().Verbatim()
 	local.Def("extractor", &extractor).Opt()
 	local.Parse(value)
 
@@ -285,9 +297,41 @@ loop:
 	return nil
 }
 
-// resetOperator implements reset. reset takes a series of values, which it
-// interprets as symbols and removes them from the symbol table, if present. An
-// error occurs if values are not symbols.
+// macroOperator implements macro. macro takes a series of values verbatim,
+// which it interprets as symbols, gets their values from the symbol table
+// without resolving them, and passes them recursively to Parse. An error occurs
+// if values are not symbols, if any symbol is not found, or if parsing fails.
+type macroOperator struct {
+	parser *Parser
+}
+
+func (o *macroOperator) handle(value string) error {
+	local := NewParser(nil)
+	var symbols []string
+	local.Def("", &symbols).Verbatim()
+	local.Parse(value)
+	code := []string{}
+	for _, s := range symbols {
+		if sym, isSymbol := symbol(s, o.parser); isSymbol {
+			if v, ok := o.parser.symbols.table[sym]; ok {
+				code = append(code, v.s)
+			} else {
+				return fmt.Errorf(`macro: symbol "%s" undefined`, s)
+			}
+		} else {
+			return fmt.Errorf(`macro: "%s": symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
+		}
+	}
+	err := o.parser.ParseStrings(code)
+	if err != nil {
+		return fmt.Errorf(`macro: parsing of %v failed %v`, code, err)
+	}
+	return nil
+}
+
+// resetOperator implements reset. reset takes a series of values verbatim,
+// which it interprets as symbols and removes them from the symbol table, if
+// present. An error occurs if values are not symbols.
 type resetOperator struct {
 	parser *Parser
 }
@@ -295,13 +339,13 @@ type resetOperator struct {
 func (o *resetOperator) handle(value string) error {
 	local := NewParser(nil)
 	var symbols []string
-	local.Def("", &symbols)
+	local.Def("", &symbols).Verbatim()
 	local.Parse(value)
 	for _, s := range symbols {
 		if sym, isSymbol := symbol(s, o.parser); isSymbol {
 			delete(o.parser.symbols.table, sym)
 		} else {
-			return fmt.Errorf(`reset: symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
+			return fmt.Errorf(`reset: "%s": symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
 		}
 	}
 	return nil

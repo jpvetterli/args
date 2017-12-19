@@ -166,22 +166,25 @@ func (a *Parser) setValue(name, value string) error {
 }
 
 // parseSingleton parses nv with an empty name and returns true to request
-// recursive parsing.
+// recursive parsing. It updates nv.
 func (a *Parser) parseSingleton(nv *nameValue) (bool, error) {
-	symv, modified, err := substitute(nv.Value, &a.symbols)
+	symv, _, err := substitute(nv.Value, &a.symbols)
 	if err != nil {
 		return false, err
 	}
+
+	isBoolParamWithStandaloneName := func() bool {
+		if p, ok := a.params[symv.s]; ok {
+			return reflTakesBool(p.target)
+		}
+		return false
+	}
+
 	switch {
 
 	// standalone name
-	case symv.resolved && func() bool { _, ok := a.params[symv.s]; return ok }():
+	case symv.resolved && isBoolParamWithStandaloneName():
 		nv.Name, nv.Value = symv.s, "true"
-
-	// resolved value could be a "subroutine"
-	case modified:
-		nv.Value = symv.s
-		return true, nil
 
 	// actual standalone value
 	default:
@@ -241,11 +244,57 @@ func (a *Parser) Doc(s ...string) {
 
 // PrintDoc uses a Writer to print the command help text, followed by the help
 // text of each parameter in definition sequence. Any relevant information about
-// parameters is included. A section indicating the special characters is added.
-func (a *Parser) PrintDoc(w io.Writer) {
-	for _, s := range a.doc {
-		fmt.Fprintln(w, s)
+// parameters is included.
+//
+// If any s is specified, the first line of command help text is assumed
+// to contain formatting verbs and is printed with Fprintf, else it is
+// printed with Fprintln.
+//
+// If no help text was supplied with Doc, a default help text is provided
+// which depends on the length of s and on whether any parameter was
+// defined:
+//
+// No s, no parameters:
+//	the command takes no parameter\n
+// No s, parameters specified:
+//	the command takes these parameters:\n
+// s specified, no parameters:
+//	Usage: %v\n
+// s specified, parameters specified:
+//	Usage: %v parameters...\n
+//
+//	Parameters:
+// If a single s is specified the single value is selected,
+// else all values are taken, which will probably look a bit
+// strange in the output.
+func (a *Parser) PrintDoc(w io.Writer, s ...interface{}) {
+	switch {
+	case len(a.doc) > 0:
+		for i, line := range a.doc {
+			if i == 0 {
+				if len(s) > 0 {
+					fmt.Fprintf(w, line, s...)
+				} else {
+					fmt.Fprintln(w, line)
+				}
+			} else {
+				fmt.Fprintln(w, line)
+			}
+		}
+	case len(s) == 0 && len(a.seq) == 0:
+		fmt.Fprintln(w, "the command takes no parameter")
+	case len(s) == 0 && len(a.seq) > 0:
+		fmt.Fprintln(w, "the command takes these parameters:")
+	case len(s) == 1 && len(a.seq) == 0:
+		fmt.Fprintf(w, "Usage: %v\n", s[0])
+	case len(s) == 1 && len(a.seq) > 0:
+		fmt.Fprintf(w, "Usage: %v parameters...\n\nParameters:\n", s[0])
+	case len(s) > 0 && len(a.seq) == 0:
+		fmt.Fprintf(w, "Usage: %v\n", s)
+	case len(s) > 0 && len(a.seq) > 0:
+		fmt.Fprintf(w, "Usage: %v parameters...\n\nParameters:\n", s)
 	}
+
 	syn := buildSynonyms(a)
 	for _, n := range a.seq {
 		p := a.params[n]
@@ -303,6 +352,12 @@ func (a *Parser) PrintDoc(w io.Writer) {
 			}
 		}
 	}
+}
+
+// PrintConfig uses a Writer to print the parser configuration. This consists of
+// the special characters configured in the parser. Nothing is printed when no
+// parameter is defined.
+func (a *Parser) PrintConfig(w io.Writer) {
 	if len(a.seq) > 0 {
 		fmt.Fprintf(w, "Special characters:\n")
 		fmt.Fprintf(w, "  %c        %s\n", a.custom.SymbolPrefix(), "symbol prefix")
@@ -610,4 +665,18 @@ func reflElementAddr(i int, v reflect.Value) interface{} {
 // reflElement returns the i-th element of target using reflection
 func reflElement(i int, v reflect.Value) interface{} {
 	return v.Index(i).Interface()
+}
+
+// reflTakesBool returns true if the target takes a bool.
+// It can be a simple variable, an array or a slice.
+func reflTakesBool(target interface{}) bool {
+	val := reflValue(target)
+	switch val.Kind() {
+	case reflect.Bool:
+		return true
+	case reflect.Array, reflect.Slice:
+		return val.Type().Elem().Kind() == reflect.Bool
+	default:
+		return false
+	}
 }
