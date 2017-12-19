@@ -44,7 +44,7 @@ func NewParser(configuration *Specials) *Parser {
 //
 // Example of chaining:
 //    var help bool
-//    a.Def("-help", &help).Aka("-h").Aka("?").Opt().Doc("print a usage summary and exit")
+//    a.Def("-help", &help).Aka("-h").Opt().Doc("print a usage summary and exit")
 //
 // When target points to an array, the parameter takes a number of values
 // exactly equal to its length. When target points to a slice, it takes a number

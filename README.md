@@ -2,6 +2,8 @@
 
 Define and parse command line arguments.
 
+[![GoDoc](https://godoc.org/github.com/jpvetterli/args?status.svg)](https://godoc.org/github.com/jpvetterli/args)
+
 The package keeps simple things simple and makes complicated things possible.
 For example, this is a simple program argument:
 ```
@@ -15,7 +17,7 @@ and this is something more complicated:
     keys=[user=usr password=$PASS]
   ]
 ```
-With package args, both examples are handled without any application logic.
+With package args, both examples are handled with minimal application logic.
 
 Parameters are defined in one-liners, with synonyms, documentation, and other
 configuration details. Values are directly taken into simple variables, arrays

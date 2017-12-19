@@ -3,7 +3,7 @@
 Package args is used to configure programs using command line arguments and
 other sources. A program usually gets its parameters from a string array
 supplied by the system. This array is named "args" in many programming
-languages, or something close. By a incredible coincidence, this is precisely
+languages, or something close. By an incredible coincidence, this is precisely
 the name of this package.
 
 The package keeps simple things simple and makes complicated things possible.
@@ -71,7 +71,7 @@ freely):
 
 In the args package, everything is a name-value pair: parameters, operators like
 include and -- (yes, it's a name). To keep simple things simple, it is possible
-to omit the name when define as empty, and the parameter is of type bool, and
+to omit the name when defined as empty, the parameter is of type bool, and
 the value is true. This is the case of the "help" parameter in first example.
 So, to get help, the user does not need to write "help=true" but simply
 
@@ -106,10 +106,10 @@ An empty name is usually omitted, and in this case the separator must also be
 omitted. Parameters with an empty name are known as anonymous and their values
 as standalone values. When a standalone value is the name of a parameter, it
 is interpreted as that name with the value "true". This effect is usually what
-is wanted, but if necessary, can be avoided using the []= notation.
+is wanted, but if necessary, can be avoided by using a quoted empty string: [].
 
 White space around separators is ignored but is significant between words, as it
-separates distinct values. White space can be included in names and values by
+separates distinct values. It can be included in names and values by
 quoting. When a quoted string contains a nested quoted string, quotes must be
 balanced.  Outermost quotes are removed but nested quotes are kept.
 
@@ -123,12 +123,12 @@ The following examples use the default set of special characters:
   foo = [bar [baz]]        (1 name with value "bar [baz]", quotes nest)
   foo \= bar               (3 standalone values)
   foo                      (foo not defined as a name: 1 standalone value)
-  foo                      (foo defined as a name: 1 name with value "true")
+  foo                      (foo defined as boolean: 1 name with value "true")
   [] = bar                 (1 standalone value, empty name explicit)
   $sym = bar               (definition of symbol sym with value "bar")
   $X=bar foo = [x: $$X ]   (name foo with value "x: bar ")
   $X = bar \$$X \\\= \[x:\ :x\]
-                           (3 standalone values: "\bar", "\=", "[x: :x]", notice escaping behavior)
+                           (3 standalone values: "\bar", "\=", "[x: :x]")
 
 The order in which name-value pairs are specified is not significant. The
 program will not know if parameter foo was specified before parameter bar.
@@ -142,7 +142,7 @@ Symbols And Substitution
 Parameter names are given by the program but symbols can be freely chosen, as
 long as they follow the same syntax rules as parameter names. A symbol is
 defined by prefixing it once with the symbol prefix. A reference consists
-consists of a symbol preceded either by 2 prefixes (as in the string "my $$foo
+of a symbol preceded either by 2 prefixes (as in the string "my $$foo
 is rich") or preceded by 3 prefixes and followed by 1 (as in "$$$foo$bar"). The
 second notation is ugly, but useful when a symbol reference is directly followed
 by a valid symbol character.
@@ -190,7 +190,7 @@ subparameters of include.
 The comment operator
 
 The -- ("comment") operator ignores its value. The value can be anything, as
-long as it can be scanned by the parser, which means only that quotes must be
+long as it can be scanned by the parser, which means that quotes must be
 balanced. The operator is used to insert comments into a string of parameters.
 The operator is especially useful for commenting out blocks of parameters, which
 can span multiple lines and can contain nested comments.
@@ -227,7 +227,7 @@ and produce the output:
 
 The reset operator
 
-The reset operator is used to remove a symbol. It takes a series of values,
+The reset operator is used to remove symbols. It takes a series of values,
 which it interprets as symbols and removes them from the symbol table, if
 present. An error occurs if values are not symbols. It is useful
 because of the "first wins" principle. Contrary to parameter values,
@@ -298,8 +298,8 @@ the string foo has the value "bar".
 
 The include operator
 
-The include operator has two different modes: a basic mode for parsing
-recursively a file containing parameters and a key-selection mode for extracting
+The include operator has two different modes: a basic mode for recursively
+parsing a file containing parameters and a key-selection mode for extracting
 name-value pairs from a file.
 
 In basic mode, include takes a file name as anonymous parameter. It reads the
@@ -307,7 +307,7 @@ file and parses its content recursively.  Files can be included recursively and
 any cyclical dependency is detected. The anonymous parameter taking the file
 name is one the two operator parameters not defined as verbatim.
 
-In key-selection mode, includes takes a file name, a "keys" parameter, and an
+In key-selection mode, include takes a file name, a "keys" parameter, and an
 optional "extractor" parameter. (The extractor parameter is the second operator
 parameter which is not verbatim.) The value of "keys" is interpreted as a series
 of standalone keys or key-translation pairs (using the current separator
@@ -322,7 +322,7 @@ key-value pairs. The default extractor is \s*(\S+)\s*=\s*(\S+)\s*. It is an
 error to specify an extractor in basic mode (when no keys are specified).
 
 As an example, suppose there is file /home/u649/.db.conf with data we can use.
-We only need the user and password information.
+Only the user and password information is needed.
 
   # this is .db.conf
   the file contains other stuff
