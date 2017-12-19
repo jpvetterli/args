@@ -2,8 +2,20 @@
 
 ### Unreleased
 
-* Document operators
 * INCOMPATIBLE CHANGE COMING SOON: NewParser will not take an argument any more
+
+### v0.3.0 (2017-12-19)
+
+All modifications are backward compatible.
+
+* Parser.PrintDoc can take zero or more arguments to format on line 1.
+* Parser.PrintDoc provides default command doc texts.
+* New Parser.PrintConfig prints the parser's configuration, which was done
+  previously by PrintDoc, but is not always wanted.
+* New operator "macro". There are now 7 built-in operators.
+* All operators are now documented in the general package documentation.
+* The README file has been updated and points to the package documentation at
+  godoc.org.
 
 ### v0.2.2 (2017-12-18)
 
