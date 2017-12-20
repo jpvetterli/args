@@ -15,17 +15,17 @@ type symval struct {
 // a value can trigger the resolution of another one. All  symbols use the same
 // prefix.
 type symtab struct {
+	config *Config
 	table  map[string]*symval
-	prefix rune
 	cycle  map[string]bool
 }
 
 // newSymtab returns a new symbol table with a substituter using the given
 // symbol prefix.
-func newSymtab(prefix rune) symtab {
+func newSymtab(config *Config) symtab {
 	return symtab{
+		config: config,
 		table:  make(map[string]*symval),
-		prefix: prefix,
 		cycle:  make(map[string]bool),
 	}
 }
@@ -38,7 +38,8 @@ func newSymtab(prefix rune) symtab {
 func (t *symtab) put(s, value string) bool {
 	r := []rune(s)
 	// symbol if 2 or more characters starting with prefix but not prefix+prefix
-	if len(r) > 1 && r[0] == t.prefix && r[1] != t.prefix {
+	prefix := t.config.GetSpecial(SpecSymbolPrefix)
+	if len(r) > 1 && r[0] == prefix && r[1] != prefix {
 		sym := string(r[1:])
 		if _, ok := t.table[sym]; !ok {
 			t.table[sym] = &symval{s: value}

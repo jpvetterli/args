@@ -9,7 +9,7 @@ import (
 )
 
 func ExampleParser_PrintDoc() {
-	a := args.NewParser(nil)
+	a := args.NewParser()
 	a.Doc(
 		"Usage: %s parameter...\n",
 		"The command does nothing but is has many parameters.",
@@ -55,16 +55,26 @@ func ExampleParser_PrintDoc() {
 	//            type: int, any number of values
 	//   array    array is a parameter taking 4 values
 	//            type: float64, split: \s*:\s*, exactly 4 values
+	//
 	// Special characters:
 	//   $        symbol prefix
-	//   =        name-value separator
-	//   [        opening quote
-	//   ]        closing quote
+	//   [        open quote
+	//   ]        close quote
+	//   =        separator
 	//   \        escape
+	//
+	// Built-in operators:
+	//   cond     conditional parsing (if, then, else)
+	//   dump     print parameters and symbols on standard error (comment)
+	//   import   import environment variables as symbols
+	//   include  include a file or extract name-values (keys, extractor)
+	//   macro    expand symbols
+	//   reset    remove symbols
+	//   --       do not parse the value (= comment out)
 }
 
 func ExampleParam_Scan() {
-	a := args.NewParser(nil)
+	a := args.NewParser()
 	var target time.Time
 
 	scanner := func(value string, target interface{}) error {
@@ -89,7 +99,7 @@ func ExampleParam_Scan() {
 }
 
 func ExampleParser_Parse() {
-	a := args.NewParser(nil)
+	a := args.NewParser()
 	var s string
 	var f [3]float64
 
@@ -118,7 +128,7 @@ func ExampleParser_Parse() {
 }
 
 func ExampleParam_Verbatim() {
-	a := args.NewParser(nil)
+	a := args.NewParser()
 	cmd1 := ""
 	cmd2 := ""
 	a.Def("cmd1", &cmd1).Verbatim() // IMPORTANT: verbatim
@@ -128,7 +138,7 @@ func ExampleParam_Verbatim() {
 		"cmd2=[$ARG1=a $ARG2=b $$MACRO]")
 
 	for _, s := range []string{cmd1, cmd2} {
-		a = args.NewParser(nil) // IMPORTANT: get a new parser
+		a = args.NewParser() // IMPORTANT: get a new parser
 		arg1 := ""
 		arg2 := ""
 		a.Def("arg1", &arg1)

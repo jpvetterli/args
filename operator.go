@@ -14,46 +14,24 @@ type operator interface {
 	handle(value string) error
 }
 
-type op uint8
-
-const (
-	opcond op = iota
-	opDump
-	opImport
-	opInclude
-	opMacro
-	opReset
-	opSkip
-)
-
-var dispatch = map[string]op{
-	"macro":   opMacro,
-	"cond":    opcond,
-	"dump":    opDump,
-	"import":  opImport,
-	"include": opInclude,
-	"reset":   opReset,
-	"--":      opSkip,
-}
-
 // operator returns the operator with the given name or nil
 func (a *Parser) operator(name string) operator {
-	o, ok := dispatch[name]
+	o, ok := a.config.opDict[name]
 	if ok {
 		switch o {
-		case opcond:
+		case OpCond:
 			return &condOperator{parser: a}
-		case opInclude:
+		case OpInclude:
 			return &includeOperator{parser: a}
-		case opDump:
+		case OpDump:
 			return &dumpOperator{parser: a}
-		case opImport:
+		case OpImport:
 			return &importOperator{parser: a}
-		case opMacro:
+		case OpMacro:
 			return &macroOperator{parser: a}
-		case opReset:
+		case OpReset:
 			return &resetOperator{parser: a}
-		case opSkip:
+		case OpSkip:
 			return &skipOperator{}
 		default:
 			panic(fmt.Errorf("bug: %v (%s)", o, name)) // forgot something
@@ -74,7 +52,7 @@ type condOperator struct {
 }
 
 func (o *condOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	condIf := ""
 	condThen := ""
 	condElse := ""
@@ -118,7 +96,7 @@ type dumpOperator struct {
 }
 
 func (o *dumpOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	comment := ""
 	var names []string
 	local.Def("", &names).Verbatim()
@@ -166,7 +144,7 @@ type importOperator struct {
 }
 
 func (o *importOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
 	local.Parse(value)
@@ -176,7 +154,7 @@ func (o *importOperator) handle(value string) error {
 				o.parser.symbols.put(sym, v)
 			}
 		} else {
-			return fmt.Errorf(`import: "%s": symbol prefix missing (%c)`, sym, o.parser.custom.SymbolPrefix())
+			return fmt.Errorf(`import: "%s": symbol prefix missing (%c)`, sym, o.parser.config.GetSpecial(SpecSymbolPrefix))
 		}
 	}
 	return nil
@@ -207,7 +185,7 @@ type includeOperator struct {
 }
 
 func (o *includeOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	filename := ""
 	keys := ""
 	extractor := ""
@@ -252,7 +230,7 @@ func (o *includeOperator) handle(value string) error {
 		panic(fmt.Errorf(`compilation of extractor "%s" failed: %v`, extractor, err))
 	}
 
-	kvs, err := pairs(o.parser.custom, []byte(keys))
+	kvs, err := pairs(o.parser.config, []byte(keys))
 	if err != nil {
 		return err
 	}
@@ -306,7 +284,7 @@ type macroOperator struct {
 }
 
 func (o *macroOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
 	local.Parse(value)
@@ -319,7 +297,7 @@ func (o *macroOperator) handle(value string) error {
 				return fmt.Errorf(`macro: symbol "%s" undefined`, s)
 			}
 		} else {
-			return fmt.Errorf(`macro: "%s": symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
+			return fmt.Errorf(`macro: "%s": symbol prefix missing (%c)`, s, o.parser.config.GetSpecial(SpecSymbolPrefix))
 		}
 	}
 	err := o.parser.ParseStrings(code)
@@ -337,7 +315,7 @@ type resetOperator struct {
 }
 
 func (o *resetOperator) handle(value string) error {
-	local := NewParser(nil)
+	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
 	local.Parse(value)
@@ -345,7 +323,7 @@ func (o *resetOperator) handle(value string) error {
 		if sym, isSymbol := symbol(s, o.parser); isSymbol {
 			delete(o.parser.symbols.table, sym)
 		} else {
-			return fmt.Errorf(`reset: "%s": symbol prefix missing (%c)`, s, o.parser.custom.SymbolPrefix())
+			return fmt.Errorf(`reset: "%s": symbol prefix missing (%c)`, s, o.parser.config.GetSpecial(SpecSymbolPrefix))
 		}
 	}
 	return nil
@@ -364,7 +342,7 @@ func (o *skipOperator) handle(value string) error {
 // symbol prefix else it returns s and false.
 func symbol(s string, p *Parser) (string, bool) {
 	r := []rune(s)
-	if len(r) > 1 && r[0] == p.custom.SymbolPrefix() {
+	if len(r) > 1 && r[0] == p.config.GetSpecial(SpecSymbolPrefix) {
 		return string(r[1:]), true
 	}
 	return s, false

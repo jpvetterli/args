@@ -21,7 +21,8 @@ func nextPos(r *bytes.Reader) int {
 	return int(r.Size()) - r.Len()
 }
 
-func newScannerState(input []byte, prefix rune) scannerState {
+func newScannerState(input []byte, config *Config) scannerState {
+	prefix := config.GetSpecial(SpecSymbolPrefix)
 	return scannerState{
 		marker:    prefix,
 		markerLen: len(string(prefix)),
@@ -50,7 +51,7 @@ const (
 // is explained in details in the package documentation.
 func substitute(s string, symbols *symtab) (*symval, bool, error) {
 	input := []byte(s)
-	state := newScannerState(input, symbols.prefix)
+	state := newScannerState(input, symbols.config)
 	var resolved bytes.Buffer
 
 	modified := false

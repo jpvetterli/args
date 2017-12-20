@@ -21,7 +21,7 @@ or maybe "-help", or "--help", or "-h":
     )
 
     func main() {
-    	a := args.NewParser(nil)
+    	a := args.NewParser()
     	help := false
     	a.Def("help", &help).Aka("-help").Aka("--help").Aka("-h").Opt()
     	err := a.ParseStrings(os.Args[1:])
@@ -40,7 +40,7 @@ and for arrays and slices. If needed, custom scanners can be used, so
 non-standard types are supported too. From the programmer's point of view,
 configuring parameters and taking values looks like this:
 
-  p := args.NewParser(nil)
+  p := args.NewParser()
   things := []string{}
   p.Def("thing", &things).Aka("") // empty name alias for "thing"
   p.Parse(...)

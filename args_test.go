@@ -23,14 +23,14 @@ func TestParamDuplicate(t *testing.T) {
 
 func TestReservedPrefix(t *testing.T) {
 	a := getParser()
-	defer panicHandler(`"$a" cannot be used as parameter name or alias because it includes the character '$'`, t)
+	defer panicHandler(`"$a" cannot be used as a name because it includes the character '$'`, t)
 	i := 1
 	a.Def("$a", &i)
 }
 
 func TestInvalidChar(t *testing.T) {
 	a := getParser()
-	defer panicHandler(`"a b" cannot be used as parameter name or alias because it includes the character ' '`, t)
+	defer panicHandler(`"a b" cannot be used as a name because it includes the character ' '`, t)
 	i := 1
 	a.Def("a b", &i)
 }
@@ -1072,8 +1072,31 @@ func TestOperatorDumpWithCond(t *testing.T) {
 	}
 }
 
+func TestOperatorDumpWithCondRenamed(t *testing.T) {
+	c := args.NewConfig()
+	c.SetOpName(args.OpImport, "IMPORTIEREN")
+	c.SetOpName(args.OpCond, "KONDITIONAL")
+	c.SetOpName(args.OpDump, "DUMPIEREN")
+	a := args.CustomParser(c)
+	empty := ""
+	a.Def("", &empty).Opt()
+	input := "IMPORTIEREN=[$HOMEY $NONESUCH] " +
+		"KONDITIONAL=[if=[$HOMEY] then=[$$HOMEY] else=[DUMPIEREN=[comment=[$$HOMEY not set]]]] " +
+		"DUMPIEREN=[$HOMEY $NONESUCH []]"
+	expected := "$$HOMEY not set\n? $HOMEY\n? $NONESUCH\n[] \n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
+	}
+}
+
 func TestArgsPrintDoc(t *testing.T) {
-	a := getParser()
+	c := args.NewConfig()
+	c.SetOpName(args.OpReset, "zurücksetzen")
+	a := args.CustomParser(c)
 	err := setupTestArgsPrintDoc(a)
 	if err != nil {
 		t.Errorf(`unexpected error: "%s"`, err.Error())
@@ -1105,12 +1128,23 @@ Parameters:
            type: float64, split: \s*:\s*, exactly 4 values
   undoc, -u
            type: float64
+
 Special characters:
   $        symbol prefix
-  =        name-value separator
-  [        opening quote
-  ]        closing quote
+  [        open quote
+  ]        close quote
+  =        separator
   \        escape
+
+Built-in operators:
+  cond     conditional parsing (if, then, else)
+  dump     print parameters and symbols on standard error (comment)
+  import   import environment variables as symbols
+  include  include a file or extract name-values (keys, extractor)
+  macro    expand symbols
+  zurücksetzen
+           remove symbols
+  --       do not parse the value (= comment out)
 `
 	if b.String() != expected {
 		t.Errorf("PrintDoc output does not match")
@@ -1120,7 +1154,7 @@ Special characters:
 				commonPrefix(b.String(), expected) + "\n" +
 				"=== diff (end) ===")
 	}
-	// NOTE: fmt.Println(b.String());	a.PrintDocDetails(os.Stdout)
+	// NOTE:	fmt.Println(b.String())
 	a = nil // reclaim memory
 }
 
@@ -1458,5 +1492,5 @@ func captureOutput(f func() error, output *os.File) (result string, err error) {
 }
 
 func getParser() *args.Parser {
-	return args.NewParser(nil)
+	return args.NewParser()
 }

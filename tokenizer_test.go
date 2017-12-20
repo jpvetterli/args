@@ -39,7 +39,7 @@ var tokTestData = []struct {
 }
 
 func TestTokenizerOnGenericData(t *testing.T) {
-	tkz := newTokenizer(NewSpecials(""))
+	tkz := newTokenizer(NewConfig())
 	for _, data := range tokTestData {
 		tkz.Reset([]byte(data.input))
 		for i, exp := range data.expect {
@@ -58,7 +58,7 @@ func TestTokenizerOnGenericData(t *testing.T) {
 }
 
 func TestTokenizer(t *testing.T) {
-	tokenizer := newTokenizer(NewSpecials(""))
+	tokenizer := newTokenizer(NewConfig())
 	// no reset() so must get tokEnd
 	tok, s, err := tokenizer.Next()
 	if err != nil {
@@ -70,7 +70,7 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestTokenizerCallAfterError(t *testing.T) {
-	tkz := newTokenizer(NewSpecials(""))
+	tkz := newTokenizer(NewConfig())
 	tkz.Reset([]byte("]foo"))
 	tkz.expectError("]foo", 0, `at "]": premature ]`, t)
 	defer func() {

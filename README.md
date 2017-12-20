@@ -24,7 +24,7 @@ configuration details. Values are directly taken into simple variables, arrays
 or slices. Arbitrary types are easily supported like in this example:
 
 ```
-a := args.NewParser(nil)
+a := args.NewParser()
 var target time.Time
 
 scanner := func(value string, target interface{}) error {

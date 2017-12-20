@@ -21,10 +21,10 @@ const (
 )
 
 // pairs returns a list of name-value pairs and standalone values found in the
-// input, using  the given configuration of special characters.
-func pairs(config *Specials, input []byte) ([]*nameValue, error) {
+// input, using  the given configuration.
+func pairs(configuration *Config, input []byte) ([]*nameValue, error) {
 	result := make([]*nameValue, 0, 20)
-	t := newTokenizer(config)
+	t := newTokenizer(configuration)
 	t.Reset(input)
 	state := expectName
 	var p *nameValue
@@ -40,7 +40,7 @@ func pairs(config *Specials, input []byte) ([]*nameValue, error) {
 			case tokenEnd:
 				return result, nil
 			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), config.Separator())
+				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), configuration.GetSpecial(SpecSeparator))
 			case tokenString:
 				// assume new token is a name
 				p = new(nameValue)
@@ -71,7 +71,7 @@ func pairs(config *Specials, input []byte) ([]*nameValue, error) {
 			case tokenEnd:
 				return nil, fmt.Errorf(`at "%s": premature end of input`, t.ErrorContext())
 			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), config.Separator())
+				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), configuration.GetSpecial(SpecSeparator))
 			case tokenString:
 				p.Value = s
 				state = expectName
@@ -80,12 +80,11 @@ func pairs(config *Specials, input []byte) ([]*nameValue, error) {
 	}
 }
 
-// values returns a list of standalone values, using the given configuration of
-// special characters. An error is returned if the input contains any name-value
-// pair.
-func values(config *Specials, input []byte) ([]string, error) {
+// values returns a list of standalone values, using the given configuration. An
+// error is returned if the input contains any name-value pair.
+func values(configuration *Config, input []byte) ([]string, error) {
 	result := make([]string, 0, 20)
-	t := newTokenizer(config)
+	t := newTokenizer(configuration)
 	t.Reset(input)
 	for {
 		token, s, err := t.Next()

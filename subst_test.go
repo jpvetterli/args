@@ -66,7 +66,7 @@ var testCount = []struct {
 }
 
 func symbolTable(prefix rune) *symtab {
-	st := newSymtab(prefix)
+	st := newTestingSymtab(prefix)
 	p := string(prefix)
 	st.put(p+"foo", "ba⌘r")
 	st.put(p+"1magic", "xyzzy")
@@ -106,7 +106,7 @@ func TestSubstWithMultiByteDataAndSymbols(t *testing.T) {
 	input := "⌘⌘foo 日本語 ⌘⌘日本語"
 	expect := "ba⌘r 日本語 nihongo <日本語>"
 	symt := func(prefix rune) *symtab {
-		st := newSymtab(prefix)
+		st := newTestingSymtab(prefix)
 		p := string(prefix)
 		st.put(p+"foo", "ba⌘r")
 		st.put(p+"日本語", "nihongo <日本語>")

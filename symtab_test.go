@@ -5,7 +5,7 @@ import (
 )
 
 func TestPutFirstWins(t *testing.T) {
-	table := newSymtab('$')
+	table := newTestingSymtab('$')
 	table.put("$a0", "1")
 	table.put("$a0", "2")
 	expected := "1"
@@ -21,7 +21,7 @@ func TestPutFirstWins(t *testing.T) {
 }
 
 func TestGetUnresolvedValue(t *testing.T) {
-	table := newSymtab('$')
+	table := newTestingSymtab('$')
 	table.put("$a1", "$$b1")
 	expected := "$$b1"
 	v, _ := table.get("a1")
@@ -31,7 +31,7 @@ func TestGetUnresolvedValue(t *testing.T) {
 }
 
 func TestGetResolvedValue(t *testing.T) {
-	table := newSymtab('$')
+	table := newTestingSymtab('$')
 	table.put("$a2", "a $$b2 e")
 	table.put("$b2", "b $$c2 d")
 	table.put("$c2", "C")
@@ -43,7 +43,7 @@ func TestGetResolvedValue(t *testing.T) {
 }
 
 func TestGetCycle(t *testing.T) {
-	table := newSymtab('$')
+	table := newTestingSymtab('$')
 	table.put("$a3", "a $$b3 e")
 	table.put("$b3", "b $$c3 d")
 	table.put("$c3", "$$a3")
@@ -59,7 +59,7 @@ func TestGetCycle(t *testing.T) {
 }
 
 func TestSymbols1(t *testing.T) {
-	table1 := newSymtab('$')
+	table1 := newTestingSymtab('$')
 	test := func(name1, name2 string, expectOkay bool) {
 		table1.put(name1, "...")
 		v, _ := table1.get(name2)
@@ -82,7 +82,7 @@ func TestSymbols1(t *testing.T) {
 }
 
 func TestSymbols2(t *testing.T) {
-	table1 := newSymtab('⌘')
+	table1 := newTestingSymtab('⌘')
 	test := func(name1, name2 string, expectOkay bool) {
 		table1.put(name1, "...")
 		v, _ := table1.get(name2)
@@ -102,4 +102,10 @@ func TestSymbols2(t *testing.T) {
 	test("⌘", "", false)
 	test("aaa", "", false)
 	test("", "", false)
+}
+
+func newTestingSymtab(prefix rune) symtab {
+	c := NewConfig()
+	c.SetSpecial(SpecSymbolPrefix, prefix)
+	return newSymtab(c)
 }

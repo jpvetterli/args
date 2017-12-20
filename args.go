@@ -6,12 +6,13 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Parser methods define and parse command line parameters. There are also
 // methods for specifying and producing command documentation.
 type Parser struct {
-	custom  *Specials
+	config  *Config
 	params  map[string]*Param
 	seq     []string // names in definition sequence
 	doc     []string
@@ -20,21 +21,30 @@ type Parser struct {
 	cycle   map[string]bool // include cycle detector
 }
 
-// NewParser returns a Parser with a configuration of special characters.
-// A default configuration is used if it is nil.
-func NewParser(configuration *Specials) *Parser {
-	if configuration == nil {
-		configuration = NewSpecials("")
-	}
+// CustomParser returns a new Parser with a specific configuration. Because the
+// parser keeps a copy of the configuration and not the original, changes to the
+// configuration has only an effect before calling this function, but not after.
+func CustomParser(configuration *Config) *Parser {
+	copy := configuration.copy()
 	return &Parser{
-		custom:  configuration,
+		config:  copy,
 		params:  make(map[string]*Param),
 		seq:     make([]string, 0),
 		doc:     make([]string, 0),
 		targets: make(map[interface{}]bool),
-		symbols: newSymtab(configuration.SymbolPrefix()),
+		symbols: newSymtab(copy),
 		cycle:   make(map[string]bool),
 	}
+}
+
+// SubParser returns a new Parser configured like the parser specified.
+func SubParser(parser *Parser) *Parser {
+	return CustomParser(parser.config)
+}
+
+// NewParser returns a new Parser with a default configuration.
+func NewParser() *Parser {
+	return CustomParser(NewConfig())
 }
 
 // Def defines a parameter with a name and a target to take one or more values.
@@ -67,7 +77,7 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	if _, ok := a.targets[target]; ok {
 		panic(fmt.Errorf(`target for parameter "%s" is already assigned`, name))
 	}
-	if err := a.validate(name); err != nil {
+	if err := validate(name); err != nil {
 		panic(err)
 	}
 	if a.operator(name) != nil {
@@ -106,7 +116,7 @@ func (a *Parser) Parse(s string) error {
 func (a *Parser) parse(s string) error {
 
 	// build list of name-value pairs
-	namevals, e := pairs(a.custom, []byte(s))
+	namevals, e := pairs(a.config, []byte(s))
 	if e != nil {
 		return e
 	}
@@ -210,7 +220,7 @@ func (a *Parser) parsePair(nv *nameValue) error {
 		return err
 	}
 	if !symv.resolved {
-		return fmt.Errorf(`cannot resolve name in "%s %c %s"`, nv.Name, a.custom.Separator(), nv.Value)
+		return fmt.Errorf(`cannot resolve name in "%s %c %s"`, nv.Name, a.config.GetSpecial(SpecSeparator), nv.Value)
 	}
 	nv.Name = symv.s
 
@@ -222,7 +232,7 @@ func (a *Parser) parsePair(nv *nameValue) error {
 		}
 		if !symv.resolved {
 			if !p.verbatim {
-				return fmt.Errorf(`cannot resolve value in "%s %c %s"`, nv.Name, a.custom.Separator(), nv.Value)
+				return fmt.Errorf(`cannot resolve value in "%s %c %s"`, nv.Name, a.config.GetSpecial(SpecSeparator), nv.Value)
 			}
 		}
 		nv.Value = symv.s
@@ -359,12 +369,40 @@ func (a *Parser) PrintDoc(w io.Writer, s ...interface{}) {
 // parameter is defined.
 func (a *Parser) PrintConfig(w io.Writer) {
 	if len(a.seq) > 0 {
-		fmt.Fprintf(w, "Special characters:\n")
-		fmt.Fprintf(w, "  %c        %s\n", a.custom.SymbolPrefix(), "symbol prefix")
-		fmt.Fprintf(w, "  %c        %s\n", a.custom.Separator(), "name-value separator")
-		fmt.Fprintf(w, "  %c        %s\n", a.custom.LeftQuote(), "opening quote")
-		fmt.Fprintf(w, "  %c        %s\n", a.custom.RightQuote(), "closing quote")
-		fmt.Fprintf(w, "  %c        %s\n", a.custom.Escape(), "escape")
+		fmt.Fprintf(w, "\nSpecial characters:\n")
+		for _, s := range [5]specConstant{SpecSymbolPrefix, SpecOpenQuote, SpecCloseQuote, SpecSeparator, SpecEscape} {
+			fmt.Fprintf(w, "  %c        %s\n", a.config.GetSpecial(s), specialDescription[s])
+		}
+		fmt.Fprintf(w, "\nBuilt-in operators:\n")
+
+		reverse := make(map[opConstant]string, len(a.config.opDict))
+		for n, v := range a.config.opDict {
+			reverse[v] = n
+		}
+		text := make(map[opConstant]string, len(a.config.opDict))
+		text[OpCond] = "conditional parsing (if, then, else)"
+		text[OpDump] = "print parameters and symbols on standard error (comment)"
+		text[OpImport] = "import environment variables as symbols"
+		text[OpInclude] = "include a file or extract name-values (keys, extractor)"
+		text[OpMacro] = "expand symbols"
+		text[OpReset] = "remove symbols"
+		text[OpSkip] = "do not parse the value (= comment out)"
+
+		print := func(name, doc string) {
+			if len(name) > 8 {
+				fmt.Fprintf(w, "  %s\n", name)
+				fmt.Fprintf(w, "  %-8s %s\n", "", doc)
+			} else {
+				fmt.Fprintf(w, "  %-8s %s\n", name, doc)
+			}
+		}
+		print(reverse[OpCond], text[OpCond])
+		print(reverse[OpDump], text[OpDump])
+		print(reverse[OpImport], text[OpImport])
+		print(reverse[OpInclude], text[OpInclude])
+		print(reverse[OpMacro], text[OpMacro])
+		print(reverse[OpReset], text[OpReset])
+		print(reverse[OpSkip], text[OpSkip])
 	}
 }
 
@@ -394,7 +432,7 @@ func (p *Param) Aka(alias string) *Param {
 	if _, ok := p.dict.params[alias]; ok {
 		panic(fmt.Errorf(`synonym "%s" clashes with an existing parameter name or synonym`, alias))
 	}
-	if err := p.dict.validate(alias); err != nil {
+	if err := validate(alias); err != nil {
 		panic(err)
 	}
 	p.dict.params[alias] = p
@@ -476,16 +514,6 @@ func (p *Param) Split(regex string) *Param {
 
 // helpers
 
-// validate verifies a name (no symbol prefix allowed)
-func (a *Parser) validate(name string) error {
-	for _, r := range []rune(name) {
-		if !valid(r) {
-			return fmt.Errorf(`"%s" cannot be used as parameter name or alias because it includes the character '%c'`, name, r)
-		}
-	}
-	return nil
-}
-
 // parseValues converts values and assigns them to targets
 func (p *Param) parseValues(values []string) error {
 	var err error
@@ -557,6 +585,28 @@ func (p *Param) assign(value string, target interface{}) error {
 		return p.scan(value, target)
 	}
 	return typescan(value, target)
+}
+
+// validate verifies a name
+func validate(name string) error {
+	for _, r := range []rune(name) {
+		if !valid(r) {
+			return fmt.Errorf(`"%s" cannot be used as a name because it includes the character '%c'`, name, r)
+		}
+	}
+	return nil
+}
+
+// valid returns true iff char is valid in a parameter or symbol name.
+// Valid characters are letters, digits, the hyphen and the underscore.
+func valid(char rune) bool {
+	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '-' || char == '_'
+}
+
+// validSpecial returns true iff char is valid as a special character.
+// Valid special characters are graphic, not white space, not valid in a name.
+func validSpecial(char rune) bool {
+	return !valid(char) && unicode.IsGraphic(char) && !unicode.IsSpace(char)
 }
 
 // verify verifies that omitted parameters can be omitted and that default

@@ -9,7 +9,7 @@ import (
 
 // tokenizer methods help to parse an input as a series of name-value pairs.
 type tokenizer struct {
-	config    *Specials
+	config    *Config
 	input     []byte
 	reader    *bytes.Reader
 	state     tokenizerScanState
@@ -18,8 +18,8 @@ type tokenizer struct {
 	depth     int // nested brackets
 }
 
-func newTokenizer(config *Specials) *tokenizer {
-	return &tokenizer{config: config, reader: bytes.NewReader(nil)}
+func newTokenizer(configuration *Config) *tokenizer {
+	return &tokenizer{config: configuration, reader: bytes.NewReader(nil)}
 }
 
 var errorContextLength = 15
@@ -144,7 +144,7 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.panic(r)
 		}
 
-	case r == t.config.Separator():
+	case r == t.config.GetSpecial(SpecSeparator):
 		switch t.state {
 		case tsInit:
 			return tokenEqual, nil, nil
@@ -160,7 +160,7 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.panic(r)
 		}
 
-	case r == t.config.Escape():
+	case r == t.config.GetSpecial(SpecEscape):
 		switch t.state {
 		case tsInit, tsString:
 			t.escState = tsString
@@ -175,7 +175,7 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.panic(r)
 		}
 
-	case r == t.config.LeftQuote():
+	case r == t.config.GetSpecial(SpecOpenQuote):
 		switch t.state {
 		case tsInit, tsString:
 			t.depth = 1
@@ -190,7 +190,7 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.panic(r)
 		}
 
-	case r == t.config.RightQuote():
+	case r == t.config.GetSpecial(SpecCloseQuote):
 		switch t.state {
 		case tsInit, tsString:
 			return t.genericError("premature " + string(r))
@@ -220,7 +220,7 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.stringBuf.WriteRune(r)
 		case tsEscape:
 			t.state = t.escState
-			t.stringBuf.WriteRune(t.config.Escape())
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecEscape))
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)

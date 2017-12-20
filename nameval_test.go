@@ -63,7 +63,7 @@ var nvBadValuesTestData = []struct {
 
 func TestScannerWithGoodData(t *testing.T) {
 	for _, data := range nvGoodTestData {
-		result, err := pairs(NewSpecials(""), []byte(data.input))
+		result, err := pairs(NewConfig(), []byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -81,7 +81,7 @@ func TestScannerWithGoodData(t *testing.T) {
 
 func TestScannerWithGoodValuesData(t *testing.T) {
 	for _, data := range nvGoodValuesTestData {
-		result, err := values(NewSpecials(""), []byte(data.input))
+		result, err := values(NewConfig(), []byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -98,8 +98,14 @@ func TestScannerWithGoodValuesData(t *testing.T) {
 }
 
 func TestScannerWithCustomData(t *testing.T) {
+	config := NewConfig()
+	config.SetSpecial(SpecSymbolPrefix, '?')
+	config.SetSpecial(SpecOpenQuote, '{')
+	config.SetSpecial(SpecCloseQuote, '}')
+	config.SetSpecial(SpecSeparator, ':')
+	config.SetSpecial(SpecEscape, '!')
 	for _, data := range nvCustomTestData {
-		result, err := pairs(NewSpecials("?{}:!"), []byte(data.input))
+		result, err := pairs(config, []byte(data.input))
 		if err != nil {
 			t.Errorf(`with "%s" unexpected error: "%s"`, data.input, err.Error())
 			return
@@ -117,7 +123,7 @@ func TestScannerWithCustomData(t *testing.T) {
 
 func TestScannerWithBadData(t *testing.T) {
 	for _, data := range nvBadTestData {
-		result, err := pairs(NewSpecials(""), []byte(data.input))
+		result, err := pairs(NewConfig(), []byte(data.input))
 		if err == nil {
 			if result != nil {
 				t.Errorf(`with "%s" error missing: "%s" unexpected result: "%s"`, data.input, data.expect, compact(result))
@@ -134,7 +140,7 @@ func TestScannerWithBadData(t *testing.T) {
 
 func TestScannerWithBadValuesData(t *testing.T) {
 	for _, data := range nvBadValuesTestData {
-		result, err := values(NewSpecials(""), []byte(data.input))
+		result, err := values(NewConfig(), []byte(data.input))
 		if err == nil {
 			if result != nil {
 				t.Errorf(`with "%s" error missing: "%s" unexpected result: "%s"`, data.input, data.expect, compactValues(result))
