@@ -2,7 +2,18 @@
 
 ### Unreleased
 
-* INCOMPATIBLE CHANGE COMING SOON: NewParser will not take an argument any more
+* Allow symbol prefix to be escaped.
+
+### v0.4.0 (2017-12-20)
+
+This release includes INCOMPATIBLE changes. It supports full customization of
+special characters and operator names.
+
+* NewParser function does not take a parameter any more.
+* Type Specials was removed.
+* New type Config.
+* New function CustomParser uses Config.
+* New function SubParser.
 
 ### v0.3.1 (2017-12-19)
 
