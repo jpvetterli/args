@@ -1,6 +1,8 @@
 package args
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type specConstant uint8
 

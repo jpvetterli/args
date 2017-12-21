@@ -73,14 +73,7 @@ func TestTokenizerCallAfterError(t *testing.T) {
 	tkz := newTokenizer(NewConfig())
 	tkz.Reset([]byte("]foo"))
 	tkz.expectError("]foo", 0, `at "]": premature ]`, t)
-	defer func() {
-		if s := recover(); s != nil {
-			expected := "tokenizer.next() called after an error"
-			if s != expected {
-				t.Errorf(`recovery failure: error message: "%s" expected: "%s"`, s, expected)
-			}
-		}
-	}()
+	defer panicHandler("Next() called after an error", t)
 	tkz.expectString("]foo", 1, "foo", t)
 }
 
@@ -121,5 +114,66 @@ func (tkz *tokenizer) expectString(input string, pos int, expectedString string,
 	}
 	if s != expectedString {
 		t.Errorf("S \"%s\"[%d]: token string: %s, expected %s", input, pos, s, expectedString)
+	}
+}
+
+func TestStack1(t *testing.T) {
+	var st stack
+	st.push(tsString)
+	st.push(tsBracket)
+	st.push(tsBracket)
+	if st.top() != tsBracket {
+		t.Errorf("top should be tsBracket")
+	}
+	if st.pop() != tsBracket {
+		t.Errorf("pop 1 should be tsBracket")
+	}
+	if st.pop() != tsBracket {
+		t.Errorf("pop 2 should be tsBracket")
+	}
+	if st.pop() != tsString {
+		t.Errorf("pop 3 should be tsString")
+	}
+	defer panicHandler("bug: stack empty", t)
+	st.pop()
+}
+
+func TestStack(t *testing.T) {
+	var st stack
+	defer panicHandler("bug: push tsInit not allowed", t)
+	st.push(tsInit)
+}
+
+func TestStack3(t *testing.T) {
+	var st stack
+	st.push(tsBracket)
+	st.push(tsBracket)
+	if len(st) != 2 {
+		t.Errorf("size not 2: %d", len(st))
+	}
+	st.push(tsString)
+	st.push(tsString)
+	st.push(tsString)
+	if len(st) != 3 {
+		t.Errorf("size not 3: %d", len(st))
+	}
+}
+
+// panicHandler triggers a testing error if panic message differs from expected
+// (copied from args_test.go, not same package)
+func panicHandler(expected string, t *testing.T) {
+	err := recover()
+	if err == nil {
+		if len(expected) > 0 {
+			t.Errorf(`(recovery) no error caught, expected: "%s"`, expected)
+		}
+	} else {
+		if e, ok := err.(error); !ok {
+			t.Errorf("(recovery) unexpected error: %v", err)
+		} else {
+			if e.Error() != expected {
+				t.Errorf(`(recovery) unexpected error message: "%s" expected: "%s"`, err, expected)
+			}
+		}
 	}
 }

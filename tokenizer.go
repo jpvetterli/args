@@ -12,10 +12,8 @@ type tokenizer struct {
 	config    *Config
 	input     []byte
 	reader    *bytes.Reader
-	state     tokenizerScanState
-	escState  tokenizerScanState
 	stringBuf bytes.Buffer
-	depth     int // nested brackets
+	stack     stack
 }
 
 func newTokenizer(configuration *Config) *tokenizer {
@@ -34,35 +32,75 @@ const (
 	tokenError
 )
 
-type tokenizerScanState uint8
+type scanState uint8
 
 const (
-	tsInit tokenizerScanState = iota
+	tsInit scanState = iota // means "stack empty"
 	tsEnd
-	tsString
+	tsString // push tsString does nothing if top already tsString
 	tsBracket
 	tsEscape
-	tsError
+	tsError // meant to be left on the stack
 )
+
+type stack []scanState
+
+func (s *stack) top() scanState {
+	l := len(*s)
+	if l == 0 {
+		return tsInit
+	}
+	return (*s)[l-1]
+}
+
+func (s *stack) push(state scanState) {
+	if state == tsInit {
+		panic(fmt.Errorf("bug: push tsInit not allowed"))
+	}
+	if state == tsString && s.top() == tsString {
+
+	} else {
+		*s = append(*s, state)
+	}
+}
+
+func (s *stack) pop() scanState {
+	l := len(*s)
+	if l == 0 {
+		panic(fmt.Errorf("bug: stack empty"))
+	}
+	defer func() { *s = (*s)[:l-1] }()
+	return (*s)[l-1]
+}
 
 // Reset makes the tokenizer ready to process a new input.
 func (t *tokenizer) Reset(input []byte) {
 	t.input = input
 	t.reader.Reset(input)
-	t.state = tsInit
-	t.escState = tsInit
 	t.stringBuf.Reset()
-	t.depth = 0
+	t.stack = t.stack[:0]
+}
+
+func (t *tokenizer) ORIGReset(input []byte) {
+	// t.input = input
+	// t.reader.Reset(input)
+	// t.state = tsInit
+	// t.escState = tsInit
+	// t.stringBuf.Reset()
+	// t.depth = 0
 }
 
 // Next finds the next token in the input. It returns a token, a slice and an
 // error. If and only if the token is tokenError, error is not nil. If and only
 // if the token is tokenString, the string is not empty.
 func (t *tokenizer) Next() (token, string, error) {
-	if t.state == tsError {
-		panic("tokenizer.next() called after an error")
+	if len(t.stack) != 0 {
+		if t.stack.top() == tsError {
+			panic(fmt.Errorf("Next() called after an error"))
+		} else {
+			panic(fmt.Errorf("Next() called on non-empty stack (size=%d top=%v)", len(t.stack), t.stack.top()))
+		}
 	}
-	t.state = tsInit
 	t.stringBuf.Reset()
 	for {
 		tokType, tok, err := t.scan()
@@ -83,17 +121,20 @@ func (t *tokenizer) ErrorContext() []byte {
 }
 
 func (t *tokenizer) genericError(msg string) (token, []byte, error) {
-	t.state = tsError
+	// t.state = tsError
+	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s": %s`, t.ErrorContext(), msg)
 }
 
 func (t *tokenizer) invalidCharacterError(msg string) (token, []byte, error) {
-	t.state = tsError
+	// t.state = tsError
+	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s%c": %s`, t.ErrorContext(), utf8.RuneError, msg)
 }
 
 func (t *tokenizer) panic(r rune) {
-	panic(fmt.Sprintf("bug in scan() character: %c state: %d", r, t.state))
+	// panic(fmt.Sprintf("bug in scan() character: %c state: %d", r, t.state))
+	panic(fmt.Sprintf("bug in scan() character: %c state: %d", r, t.stack.top()))
 }
 
 func (t *tokenizer) scan() (token, []byte, error) {
@@ -114,15 +155,19 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		r = 0
 	}
 
-	// "default return" at the end: "return ttNone, nil, nil"
+	// "default return" at the end: "return tokenNone, nil, nil"
 
 	switch {
 
 	case r == 0:
-		switch t.state {
-		case tsInit, tsEnd:
+		switch t.stack.top() {
+		case tsInit:
+			return tokenEnd, nil, nil
+		case tsEnd:
+			t.stack.pop()
 			return tokenEnd, nil, nil
 		case tsString:
+			t.stack.pop()
 			return tokenString, t.stringBuf.Bytes(), nil
 		case tsBracket, tsEscape:
 			return t.genericError("premature end of input")
@@ -131,95 +176,97 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		}
 
 	case unicode.IsSpace(r):
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit:
 		case tsString:
+			t.stack.pop()
 			return tokenString, t.stringBuf.Bytes(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
 		case tsEscape:
-			t.state = t.escState
+			t.stack.pop()
+			t.stack.push(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
 		}
 
 	case r == t.config.GetSpecial(SpecSeparator):
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit:
 			return tokenEqual, nil, nil
 		case tsString:
 			t.reader.UnreadRune()
+			t.stack.pop()
 			return tokenString, t.stringBuf.Bytes(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
 		case tsEscape:
-			t.state = t.escState
+			t.stack.pop()
+			t.stack.push(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
 		}
 
 	case r == t.config.GetSpecial(SpecEscape):
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit, tsString:
-			t.escState = tsString
-			t.state = tsEscape
+			t.stack.push(tsEscape)
 		case tsBracket:
-			t.escState = tsBracket
-			t.state = tsEscape
+			t.stack.push(tsEscape)
 		case tsEscape:
-			t.state = t.escState // restore state
+			t.stack.pop()
+			t.stack.push(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
 		}
 
 	case r == t.config.GetSpecial(SpecOpenQuote):
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit, tsString:
-			t.depth = 1
-			t.state = tsBracket
+			t.stack.push(tsBracket)
 		case tsBracket:
-			t.depth++
+			t.stack.push(tsBracket)
 			t.stringBuf.WriteRune(r)
 		case tsEscape:
-			t.state = t.escState
+			t.stack.pop()
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
 		}
 
 	case r == t.config.GetSpecial(SpecCloseQuote):
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit, tsString:
 			return t.genericError("premature " + string(r))
 		case tsBracket:
-			t.depth--
-			if t.depth == 0 {
-				t.state = tsString
+			t.stack.pop()
+			if t.stack.top() == tsBracket {
 				// do not print outermost bracket
-			} else {
 				t.stringBuf.WriteRune(r)
+			} else {
+				t.stack.push(tsString)
 			}
 		case tsEscape:
-			t.state = t.escState
+			t.stack.pop()
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
 		}
 
 	default:
-		switch t.state {
+		switch t.stack.top() {
 		case tsInit:
-			t.state = tsString
+			t.stack.push(tsString)
 			t.stringBuf.WriteRune(r)
 		case tsString:
 			t.stringBuf.WriteRune(r)
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
 		case tsEscape:
-			t.state = t.escState
+			t.stack.pop()
 			t.stringBuf.WriteRune(t.config.GetSpecial(SpecEscape))
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd

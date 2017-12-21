@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
-	"unicode"
 )
 
 // Parser methods define and parse command line parameters. There are also
@@ -590,28 +589,6 @@ func (p *Param) assign(value string, target interface{}) error {
 		return p.scan(value, target)
 	}
 	return typescan(value, target)
-}
-
-// validate verifies a name
-func validate(name string) error {
-	for _, r := range []rune(name) {
-		if !valid(r) {
-			return fmt.Errorf(`"%s" cannot be used as a name because it includes the character '%c'`, name, r)
-		}
-	}
-	return nil
-}
-
-// valid returns true iff char is valid in a parameter or symbol name.
-// Valid characters are letters, digits, the hyphen and the underscore.
-func valid(char rune) bool {
-	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '-' || char == '_'
-}
-
-// validSpecial returns true iff char is valid as a special character.
-// Valid special characters are graphic, not white space, not valid in a name.
-func validSpecial(char rune) bool {
-	return !valid(char) && unicode.IsGraphic(char) && !unicode.IsSpace(char)
 }
 
 // verify verifies that omitted parameters can be omitted and that default

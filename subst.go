@@ -17,10 +17,6 @@ type scannerState struct {
 	symbolPos int // position of symbol ($$symbol or $$$symbol$)
 }
 
-func nextPos(r *bytes.Reader) int {
-	return int(r.Size()) - r.Len()
-}
-
 func newScannerState(input []byte, config *Config) scannerState {
 	prefix := config.GetSpecial(SpecSymbolPrefix)
 	return scannerState{
