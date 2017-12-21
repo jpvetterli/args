@@ -216,7 +216,7 @@ func (o *includeOperator) handle(value string) error {
 		if e != nil {
 			return fmt.Errorf("include: %v", e)
 		}
-		return o.parser.Parse(string(data))
+		return o.parser.ParseBytes(data)
 	}
 
 	// key selection mode

@@ -101,22 +101,22 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	return &p
 }
 
-// Parse parses s to extract and assign values to parameter targets.  The result
-// is nil unless there is an error.  The input syntax is explained in the
+// ParseBytes parses b to extract and assign values to parameter targets.  The
+// result is nil unless there is an error.  The input syntax is explained in the
 // package documentation.
-func (a *Parser) Parse(s string) error {
-	err := a.parse(s)
+func (a *Parser) ParseBytes(b []byte) error {
+	err := a.parse(b)
 	if err != nil {
 		return err
 	}
 	return a.verify()
 }
 
-// parse parses s. It can be used recursively.
-func (a *Parser) parse(s string) error {
+// parse parses b. It can be used recursively.
+func (a *Parser) parse(b []byte) error {
 
 	// build list of name-value pairs
-	namevals, e := pairs(a.config, []byte(s))
+	namevals, e := pairs(a.config, b)
 	if e != nil {
 		return e
 	}
@@ -130,7 +130,7 @@ loop:
 				return err
 			}
 			if recursive {
-				err = a.parse(nv.Value)
+				err = a.parse([]byte(nv.Value))
 				if err != nil {
 					return err
 				}
@@ -240,6 +240,11 @@ func (a *Parser) parsePair(nv *nameValue) error {
 	// else: do not resolve value if not a parameter (either a symbol or a wrong name)
 
 	return nil
+}
+
+// Parse calls ParseBytes with s converted to a byte slice.
+func (a *Parser) Parse(s string) error {
+	return a.ParseBytes([]byte(s))
 }
 
 // ParseStrings calls Parse with all arguments joined with a blank.

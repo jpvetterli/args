@@ -4,6 +4,11 @@
 
 * Allow symbol prefix to be escaped.
 
+### v0.4.1 (2017-12-21)
+
+New method Parser.ParseBytes. Reduces the number of conversions when including
+files.
+
 ### v0.4.0 (2017-12-20)
 
 This release includes INCOMPATIBLE changes. It supports full customization of
