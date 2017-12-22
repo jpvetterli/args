@@ -538,6 +538,20 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a.Def("", &y).Verbatim()
 }
 
+func TestArgsStandaloneValueEmpty(t *testing.T) {
+	a := getParser()
+	nothing := false
+	a.Def("", &nothing)
+	a.Parse("")
+	if nothing {
+		t.Errorf("expected nothing false")
+	}
+	a.Parse("[]")
+	if !nothing {
+		t.Errorf("expected nothing true")
+	}
+}
+
 func TestArgsSimpleMacro(t *testing.T) {
 	a := getParser()
 	foo := []string{}

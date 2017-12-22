@@ -9,6 +9,7 @@ var tokTestData = []struct {
 	input  string
 	expect []interface{}
 }{
+	{"", []interface{}{tokenEnd}},
 	{"foo", []interface{}{"foo"}},
 	{" foo bar", []interface{}{"foo", "bar"}},
 	{"foo [bar]", []interface{}{"foo", "bar"}},
