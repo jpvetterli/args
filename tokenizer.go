@@ -12,12 +12,26 @@ type tokenizer struct {
 	config    *Config
 	input     []byte
 	reader    *bytes.Reader
+	resolve   func(string) (*symval, error)
+	resolved  bool
 	stringBuf bytes.Buffer
+	symBuf    bytes.Buffer
 	stack     stack
 }
 
-func newTokenizer(configuration *Config) *tokenizer {
-	return &tokenizer{config: configuration, reader: bytes.NewReader(nil)}
+func (t *tokenizer) symval() *symval {
+	return &symval{
+		resolved: t.resolved,
+		s:        t.stringBuf.String(),
+	}
+}
+
+func newTokenizer(configuration *Config, resolve func(string) (*symval, error)) *tokenizer {
+	return &tokenizer{
+		config:  configuration,
+		reader:  bytes.NewReader(nil),
+		resolve: resolve,
+	}
 }
 
 var errorContextLength = 15
@@ -36,10 +50,12 @@ type scanState uint8
 
 const (
 	tsInit scanState = iota // means "stack empty"
-	tsEnd
-	tsString // push tsString does nothing if top already tsString
+	tsString
 	tsBracket
+	tsSymbol
+	tsPrefix
 	tsEscape
+	tsEnd
 	tsError // meant to be left on the stack
 )
 
@@ -53,15 +69,17 @@ func (s *stack) top() scanState {
 	return (*s)[l-1]
 }
 
+func (s *stack) pushIfEmpty(state scanState) {
+	if len(*s) == 0 {
+		s.push(state)
+	}
+}
+
 func (s *stack) push(state scanState) {
 	if state == tsInit {
 		panic(fmt.Errorf("bug: push tsInit not allowed"))
 	}
-	if state == tsString && s.top() == tsString {
-
-	} else {
-		*s = append(*s, state)
-	}
+	*s = append(*s, state)
 }
 
 func (s *stack) pop() scanState {
@@ -78,34 +96,28 @@ func (t *tokenizer) Reset(input []byte) {
 	t.input = input
 	t.reader.Reset(input)
 	t.stringBuf.Reset()
+	t.resolved = true
+	t.symBuf.Reset()
 	t.stack = t.stack[:0]
-}
-
-func (t *tokenizer) ORIGReset(input []byte) {
-	// t.input = input
-	// t.reader.Reset(input)
-	// t.state = tsInit
-	// t.escState = tsInit
-	// t.stringBuf.Reset()
-	// t.depth = 0
 }
 
 // Next finds the next token in the input. It returns a token, a slice and an
 // error. If and only if the token is tokenError, error is not nil. If and only
 // if the token is tokenString, the string is not empty.
-func (t *tokenizer) Next() (token, string, error) {
+func (t *tokenizer) Next() (token, *symval, error) {
 	if len(t.stack) != 0 {
 		if t.stack.top() == tsError {
 			panic(fmt.Errorf("Next() called after an error"))
 		} else {
-			panic(fmt.Errorf("Next() called on non-empty stack (size=%d top=%v)", len(t.stack), t.stack.top()))
+			panic(fmt.Errorf("Next() called on non-empty stack (size=%d stack=%v)", len(t.stack), t.stack))
 		}
 	}
 	t.stringBuf.Reset()
+	t.resolved = true
 	for {
 		tokType, tok, err := t.scan()
 		if tokType != tokenNone {
-			return tokType, string(tok), err
+			return tokType, tok, err
 		}
 	}
 }
@@ -120,24 +132,30 @@ func (t *tokenizer) ErrorContext() []byte {
 	return t.input[:n]
 }
 
-func (t *tokenizer) genericError(msg string) (token, []byte, error) {
-	// t.state = tsError
+func (t *tokenizer) symbolCharacterError(c rune) (token, *symval, error) {
+	t.stack.push(tsError)
+	return tokenError, nil, fmt.Errorf(`at "%s": character invalid in symbol: '%c'`, t.ErrorContext(), c)
+}
+
+func (t *tokenizer) genericError(msg string) (token, *symval, error) {
 	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s": %s`, t.ErrorContext(), msg)
 }
 
-func (t *tokenizer) invalidCharacterError(msg string) (token, []byte, error) {
-	// t.state = tsError
+func (t *tokenizer) invalidCharacterError(msg string) (token, *symval, error) {
 	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s%c": %s`, t.ErrorContext(), utf8.RuneError, msg)
 }
 
 func (t *tokenizer) panic(r rune) {
-	// panic(fmt.Sprintf("bug in scan() character: %c state: %d", r, t.state))
 	panic(fmt.Sprintf("bug in scan() character: %c state: %d", r, t.stack.top()))
 }
 
-func (t *tokenizer) scan() (token, []byte, error) {
+func nextPos(r *bytes.Reader) int {
+	return int(r.Size()) - r.Len()
+}
+
+func (t *tokenizer) scan() (token, *symval, error) {
 
 	r, _, err := t.reader.ReadRune()
 	// byte order mark (\ufeff) not supported --
@@ -155,7 +173,10 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		r = 0
 	}
 
-	// "default return" at the end: "return tokenNone, nil, nil"
+	// notes:
+	// 1. "default return" is at the end (return tokenNone, nil, nil)
+	// 2. code assumes without testing with valid() that space, $, =, [, \ are
+	//    invalid in symbols (i.e., not $, but SpecSymbolPrefix, etc.)
 
 	switch {
 
@@ -163,14 +184,17 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		switch t.stack.top() {
 		case tsInit:
 			return tokenEnd, nil, nil
+		case tsPrefix:
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			fallthrough
+		case tsString:
+			t.stack.pop()
+			return tokenString, t.symval(), nil
+		case tsBracket, tsSymbol, tsEscape:
+			return t.genericError("premature end of input")
 		case tsEnd:
 			t.stack.pop()
 			return tokenEnd, nil, nil
-		case tsString:
-			t.stack.pop()
-			return tokenString, t.stringBuf.Bytes(), nil
-		case tsBracket, tsEscape:
-			return t.genericError("premature end of input")
 		default:
 			t.panic(r)
 		}
@@ -178,14 +202,19 @@ func (t *tokenizer) scan() (token, []byte, error) {
 	case unicode.IsSpace(r):
 		switch t.stack.top() {
 		case tsInit:
+		case tsPrefix:
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			fallthrough
 		case tsString:
 			t.stack.pop()
-			return tokenString, t.stringBuf.Bytes(), nil
+			return tokenString, t.symval(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
+		case tsSymbol:
+			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
-			t.stack.push(tsString)
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
@@ -195,15 +224,20 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		switch t.stack.top() {
 		case tsInit:
 			return tokenEqual, nil, nil
+		case tsPrefix:
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			fallthrough
 		case tsString:
 			t.reader.UnreadRune()
 			t.stack.pop()
-			return tokenString, t.stringBuf.Bytes(), nil
+			return tokenString, t.symval(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
+		case tsSymbol:
+			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
-			t.stack.push(tsString)
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
@@ -211,13 +245,17 @@ func (t *tokenizer) scan() (token, []byte, error) {
 
 	case r == t.config.GetSpecial(SpecEscape):
 		switch t.stack.top() {
-		case tsInit, tsString:
+		case tsPrefix:
+			t.stack.pop()
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			fallthrough
+		case tsInit, tsString, tsBracket:
 			t.stack.push(tsEscape)
-		case tsBracket:
-			t.stack.push(tsEscape)
+		case tsSymbol:
+			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
-			t.stack.push(tsString)
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
@@ -230,8 +268,14 @@ func (t *tokenizer) scan() (token, []byte, error) {
 		case tsBracket:
 			t.stack.push(tsBracket)
 			t.stringBuf.WriteRune(r)
+		case tsSymbol:
+			return t.symbolCharacterError(r)
+		case tsPrefix:
+			t.stack.pop()
+			t.stack.push(tsSymbol)
 		case tsEscape:
 			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
@@ -240,17 +284,64 @@ func (t *tokenizer) scan() (token, []byte, error) {
 	case r == t.config.GetSpecial(SpecCloseQuote):
 		switch t.stack.top() {
 		case tsInit, tsString:
-			return t.genericError("premature " + string(r))
+			return t.genericError(fmt.Sprintf("premature '%c'", r))
 		case tsBracket:
 			t.stack.pop()
 			if t.stack.top() == tsBracket {
 				// do not print outermost bracket
 				t.stringBuf.WriteRune(r)
 			} else {
-				t.stack.push(tsString)
+				t.stack.pushIfEmpty(tsString)
 			}
+		case tsSymbol:
+			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
+			symbol := t.symBuf.String()
+			t.symBuf.Reset()
+			symval, err := t.resolve(symbol)
+			if symval == nil || !symval.resolved {
+				t.resolved = false // toggle!
+			}
+			if err != nil {
+				t.stack.push(tsError)
+				if _, ok := err.(cycleError); ok {
+					return tokenError, nil, err
+				}
+				return t.genericError(fmt.Sprintf(`error resolving "%s": %v`, symbol, err))
+			}
+			if symval != nil {
+				t.stringBuf.WriteString(symval.s)
+			} else {
+				t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+				t.stringBuf.WriteRune(t.config.GetSpecial(SpecOpenQuote))
+				t.stringBuf.WriteString(symbol)
+				t.stringBuf.WriteRune(t.config.GetSpecial(SpecCloseQuote))
+			}
+		case tsPrefix:
+			t.reader.UnreadRune()
+			t.stack.pop()
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
 		case tsEscape:
 			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
+			t.stringBuf.WriteRune(r)
+		default: // tsEnd
+			t.panic(r)
+		}
+
+	case r == t.config.GetSpecial(SpecSymbolPrefix):
+		switch t.stack.top() {
+		case tsInit, tsString:
+			t.stack.push(tsPrefix)
+		case tsBracket:
+			t.stack.push(tsPrefix)
+		case tsSymbol:
+			return t.symbolCharacterError(r)
+		case tsPrefix:
+			t.stringBuf.WriteRune(r) // write the previous one to the current string
+		case tsEscape:
+			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd
 			t.panic(r)
@@ -265,8 +356,20 @@ func (t *tokenizer) scan() (token, []byte, error) {
 			t.stringBuf.WriteRune(r)
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
+		case tsSymbol:
+			if valid(r) {
+				t.symBuf.WriteRune(r)
+			} else {
+				return t.symbolCharacterError(r)
+			}
+		case tsPrefix:
+			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
+			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			t.stringBuf.WriteRune(r)
 		case tsEscape:
 			t.stack.pop()
+			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(t.config.GetSpecial(SpecEscape))
 			t.stringBuf.WriteRune(r)
 		default: // tsEnd

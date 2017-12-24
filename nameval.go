@@ -4,100 +4,75 @@ import (
 	"fmt"
 )
 
-// nameValue holds either a name-value pair or a standalone value.
-// For a standalone value, Name is an empty string. An empty
-// Value string is a value like any other.
-type nameValue struct {
-	Name  string
-	Value string
+// name-value parser manages the tokenizer and remembers one name read to far.
+type nameValParser struct {
+	t    tokenizer
+	name *symval // nil means next is a name
 }
 
-type expectState uint8
-
-const (
-	expectName  expectState = iota // expect a name or a value
-	expectEqual                    // after seeing a name or a value
-	expectValue                    // after seeing an equal
-)
-
-// pairs returns a list of name-value pairs and standalone values found in the
-// input, using  the given configuration.
-func pairs(configuration *Config, input []byte) ([]*nameValue, error) {
-	result := make([]*nameValue, 0, 20)
-	t := newTokenizer(configuration)
-	t.Reset(input)
-	state := expectName
-	var p *nameValue
-	for {
-		token, s, err := t.Next()
-		if token == tokenError {
-			return nil, err
-		}
-		switch state {
-
-		case expectName:
-			switch token {
-			case tokenEnd:
-				return result, nil
-			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), configuration.GetSpecial(SpecSeparator))
-			case tokenString:
-				// assume new token is a name
-				p = new(nameValue)
-				result = append(result, p)
-				p.Name = s // so far, could be name-value
-				state = expectEqual
-			}
-
-		case expectEqual:
-			switch token {
-			case tokenEnd:
-				p.Name, p.Value = p.Value, p.Name // p.value was nil
-				return result, nil
-			case tokenEqual:
-				state = expectValue
-			case tokenString:
-				// so, the current name is a value, swap
-				p.Name, p.Value = p.Value, p.Name
-				// and assume new token is a name
-				p = new(nameValue)
-				result = append(result, p)
-				p.Name = s
-				state = expectEqual
-			}
-
-		case expectValue:
-			switch token {
-			case tokenEnd:
-				return nil, fmt.Errorf(`at "%s": premature end of input`, t.ErrorContext())
-			case tokenEqual:
-				return nil, fmt.Errorf(`at "%s": "%c" unexpected`, t.ErrorContext(), configuration.GetSpecial(SpecSeparator))
-			case tokenString:
-				p.Value = s
-				state = expectName
-			}
-		}
-	}
+// newNameValParser returns a new name-value parser
+func newNameValParser(p *Parser, input []byte) nameValParser {
+	tkz := newTokenizer(p.config, func(sym string) (*symval, error) { return p.symbols.get(sym) })
+	tkz.Reset(input)
+	return nameValParser{t: *tkz}
 }
 
-// values returns a list of standalone values, using the given configuration. An
-// error is returned if the input contains any name-value pair.
-func values(configuration *Config, input []byte) ([]string, error) {
-	result := make([]string, 0, 20)
-	t := newTokenizer(configuration)
-	t.Reset(input)
-	for {
-		token, s, err := t.Next()
+// next returns a name symval, a value symval, and an error. The name can be
+// nil. All nil indicate the end of the input. When the method returns a non nil
+// error, name and value are nil.
+func (nvp *nameValParser) next() (*symval, *symval, error) {
+
+	var name *symval
+
+	if nvp.name == nil {
+		token, s, err := nvp.t.Next()
 		if token == tokenError {
-			return nil, err
+			return nil, nil, err
 		}
+
 		switch token {
-		case tokenString:
-			result = append(result, s)
 		case tokenEnd:
-			return result, nil
-		default:
-			return nil, fmt.Errorf(`at "%s": the input must contain only values`, t.ErrorContext())
+			return nil, nil, nil
+		case tokenEqual:
+			return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.ErrorContext(), nvp.t.config.GetSpecial(SpecSeparator))
+		case tokenString:
+			name = s
 		}
+	} else {
+		name, nvp.name = nvp.name, nil
 	}
+
+	// got a name so far, if next token is a string, it's in fact a standalone value
+	token, s, err := nvp.t.Next()
+	if token == tokenError {
+		return nil, nil, decorate(err, name.s)
+	}
+
+	switch token {
+	case tokenEnd:
+		// single string: by convention put it in the value
+		return nil, name, nil
+	case tokenEqual:
+		// expect now a value
+	case tokenString:
+		// standalone value, swap and save
+		nvp.name = s
+		return nil, name, nil
+	}
+
+	// after name and separator, expect value (string)
+
+	token, s, err = nvp.t.Next()
+	if token == tokenError {
+		return nil, nil, decorate(err, name.s)
+	}
+	switch token {
+	case tokenEnd:
+		return nil, nil, fmt.Errorf(`at "%s": premature end of input`, nvp.t.ErrorContext())
+	case tokenEqual:
+		return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.ErrorContext(), nvp.t.config.GetSpecial(SpecSeparator))
+	case tokenString:
+		return name, s, nil
+	}
+	panic("unreachable")
 }

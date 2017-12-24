@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Parser methods define and parse command line parameters. There are also
@@ -109,136 +110,6 @@ func (a *Parser) ParseBytes(b []byte) error {
 		return err
 	}
 	return a.verify()
-}
-
-// parse parses b. It can be used recursively.
-func (a *Parser) parse(b []byte) error {
-
-	// build list of name-value pairs
-	namevals, e := pairs(a.config, b)
-	if e != nil {
-		return e
-	}
-
-loop:
-	for _, nv := range namevals {
-
-		if len(nv.Name) == 0 {
-			recursive, err := a.parseSingleton(nv)
-			if err != nil {
-				return err
-			}
-			if recursive {
-				err = a.parse([]byte(nv.Value))
-				if err != nil {
-					return err
-				}
-				continue loop
-			}
-		} else {
-			err := a.parsePair(nv)
-			if err != nil {
-				return err
-			}
-		}
-
-		operator := a.operator(nv.Name)
-		if operator != nil {
-			err := operator.handle(nv.Value)
-			if err != nil {
-				return err
-			}
-			continue loop
-		}
-
-		err := a.setValue(nv.Name, nv.Value)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// setValue adds value to symbol table or set parameter value
-func (a *Parser) setValue(name, value string) error {
-	if !a.symbols.put(name, value) {
-		if p, ok := a.params[name]; ok {
-			err := p.parseValues(p.split(value))
-			if err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf(`parameter not defined: "%s"`, name)
-		}
-	}
-	return nil
-}
-
-// parseSingleton parses nv with an empty name and returns true to request
-// recursive parsing. It updates nv.
-func (a *Parser) parseSingleton(nv *nameValue) (bool, error) {
-	symv, _, err := substitute(nv.Value, &a.symbols)
-	if err != nil {
-		return false, err
-	}
-
-	isBoolParamWithStandaloneName := func() bool {
-		if p, ok := a.params[symv.s]; ok {
-			return reflTakesBool(p.target)
-		}
-		return false
-	}
-
-	switch {
-
-	// standalone name
-	case symv.resolved && isBoolParamWithStandaloneName():
-		nv.Name, nv.Value = symv.s, "true"
-
-	// actual standalone value
-	default:
-		p, ok := a.params[""]
-		if !ok {
-			return false, fmt.Errorf(`unexpected standalone value: "%s"`, nv.Value)
-		}
-		if !p.verbatim {
-			if !symv.resolved {
-				return false, fmt.Errorf(`cannot resolve standalone value "%s"`, nv.Value)
-			}
-			nv.Value = symv.s
-		} // else leave verbatim value
-
-	}
-	return false, nil
-}
-
-// parsePair parses nv with a non-empty name.
-func (a *Parser) parsePair(nv *nameValue) error {
-	symv, _, err := substitute(nv.Name, &a.symbols)
-	if err != nil {
-		return err
-	}
-	if !symv.resolved {
-		return fmt.Errorf(`cannot resolve name in "%s %c %s"`, nv.Name, a.config.GetSpecial(SpecSeparator), nv.Value)
-	}
-	nv.Name = symv.s
-
-	p, ok := a.params[nv.Name]
-	if ok {
-		symv, _, err = substitute(nv.Value, &a.symbols)
-		if err != nil {
-			return decorate(err, nv.Name)
-		}
-		if !symv.resolved {
-			if !p.verbatim {
-				return fmt.Errorf(`cannot resolve value in "%s %c %s"`, nv.Name, a.config.GetSpecial(SpecSeparator), nv.Value)
-			}
-		}
-		nv.Value = symv.s
-	}
-	// else: do not resolve value if not a parameter (either a symbol or a wrong name)
-
-	return nil
 }
 
 // Parse calls ParseBytes with s converted to a byte slice.
@@ -518,6 +389,96 @@ func (p *Param) Split(regex string) *Param {
 
 // helpers
 
+// parse parses b. It can be used recursively.
+func (a *Parser) parse(b []byte) error {
+	nvp := newNameValParser(a, b)
+	var name, value *symval
+	var err error
+	for {
+		name, value, err = nvp.next()
+
+		if err != nil {
+			return err
+		}
+
+		if name == nil && value == nil {
+			break
+		}
+
+		if name == nil {
+			// standalone name or value
+			if a.isStandaloneBoolParameter(value) {
+				// standalone name
+				name, value = value, &symval{resolved: true, s: "true"}
+			} else {
+				// standalone value
+				if _, ok := a.params[""]; !ok {
+					return fmt.Errorf(`unexpected standalone value: "%s"`, value.s)
+				}
+				// the famous empty name
+				name = &symval{resolved: true, s: ""}
+			}
+		}
+
+		// assert name != nil value != nil
+
+		operator := a.operator(name.s)
+		if operator != nil {
+			err := operator.handle(value.s)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		if !name.resolved {
+			return fmt.Errorf(`cannot resolve name in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
+		}
+		p, ok := a.params[name.s]
+		if ok {
+			if !value.resolved {
+				if !p.verbatim {
+					if len(name.s) == 0 {
+						return fmt.Errorf(`cannot resolve standalone value "%s"`, value.s)
+					}
+					return fmt.Errorf(`cannot resolve value in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
+				}
+			}
+		}
+
+		err := a.setValue(name.s, value.s)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+func (a *Parser) isStandaloneBoolParameter(value *symval) bool {
+	if value.resolved {
+		if p, ok := a.params[value.s]; ok {
+			return reflTakesBool(p.target)
+		}
+	}
+	return false
+}
+
+// setValue adds value to symbol table or sets parameter value
+func (a *Parser) setValue(name, value string) error {
+	if !a.symbols.put(name, value) {
+		if p, ok := a.params[name]; ok {
+			err := p.parseValues(p.split(value))
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf(`parameter not defined: "%s"`, name)
+		}
+	}
+	return nil
+}
+
 // parseValues converts values and assigns them to targets
 func (p *Param) parseValues(values []string) error {
 	var err error
@@ -664,6 +625,28 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// validSpecial returns true iff char is valid as a special character.
+// Valid special characters are graphic, not white space, not valid in a name.
+func validSpecial(char rune) bool {
+	return !valid(char) && unicode.IsGraphic(char) && !unicode.IsSpace(char)
+}
+
+// validate verifies a name
+func validate(name string) error {
+	for _, r := range []rune(name) {
+		if !valid(r) {
+			return fmt.Errorf(`"%s" cannot be used as a name because it includes the character '%c'`, name, r)
+		}
+	}
+	return nil
+}
+
+// valid returns true iff char is valid in a parameter or symbol name.
+// Valid characters are letters, digits, the hyphen and the underscore.
+func valid(char rune) bool {
+	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '-' || char == '_'
 }
 
 // helpers (reflection)

@@ -230,17 +230,25 @@ func (o *includeOperator) handle(value string) error {
 		panic(fmt.Errorf(`compilation of extractor "%s" failed: %v`, extractor, err))
 	}
 
-	kvs, err := pairs(o.parser.config, []byte(keys))
-	if err != nil {
-		return err
-	}
-
 	kvmap := make(map[string]string)
-	for _, kv := range kvs {
-		if len(kv.Name) == 0 {
-			kvmap[kv.Value] = kv.Value
+	nvp := newNameValParser(o.parser, []byte(keys))
+	for {
+		n, v, e := nvp.next()
+		if e != nil {
+			return e
+		}
+		if n == nil && v == nil {
+			break
+		}
+
+		if !v.resolved {
+			return fmt.Errorf(`include: cannot resolve key "%s"`, v.s)
+		}
+
+		if n == nil {
+			kvmap[v.s] = v.s
 		} else {
-			kvmap[kv.Name] = kv.Value
+			kvmap[n.s] = v.s
 		}
 	}
 

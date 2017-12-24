@@ -18,7 +18,7 @@ func TestConfigImmutability(t *testing.T) {
 	a := args.CustomParser(c)
 	foo := false
 	a.Def("foo", &foo)
-	err := a.Parse("&FOO=true foo=&&FOO")
+	err := a.Parse("&FOO=true foo=&[FOO]")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	} else if !foo {

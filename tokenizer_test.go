@@ -2,15 +2,40 @@ package args
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
+
+// NOTE: cannot test unresolved values at this level
+var resolver = func(symbol string) (*symval, error) {
+	if symbol == "ERROR" {
+		return nil, fmt.Errorf("(simulated error)")
+	}
+	if strings.HasPrefix(symbol, "_") {
+		return &symval{resolved: true, s: "value of " + symbol}, nil
+	}
+	return nil, nil
+}
 
 var tokTestData = []struct {
 	input  string
 	expect []interface{}
 }{
+	{`[\ ]`, []interface{}{" "}},
+	{`[\=]`, []interface{}{"="}},
+	{`[\\]`, []interface{}{`\`}},
+	{`\[`, []interface{}{`[`}},
+	{`\]`, []interface{}{`]`}},
+	{`\$`, []interface{}{`$`}},
+
 	{"", []interface{}{tokenEnd}},
+	{`\x`, []interface{}{`\x`}},
+	{`\\`, []interface{}{"\\"}},
+	{`\`, []interface{}{errors.New(`at "\": premature end of input`)}},
 	{"foo", []interface{}{"foo"}},
+	{`[foo]`, []interface{}{"foo"}},
+	{`[[foo]]`, []interface{}{"[foo]"}},
 	{" foo bar", []interface{}{"foo", "bar"}},
 	{"foo [bar]", []interface{}{"foo", "bar"}},
 	{"foo =   [nihongo <日本語>] ", []interface{}{"foo", tokenEqual, "nihongo <日本語>"}},
@@ -26,21 +51,72 @@ var tokTestData = []struct {
 	{"foo = [bar = [quux] ]", []interface{}{"foo", tokenEqual, "bar = [quux] "}},
 	{"foo = X[bar = [quux] ]Y", []interface{}{"foo", tokenEqual, "Xbar = [quux] Y"}},
 	{"=foo == bar", []interface{}{tokenEqual, "foo", tokenEqual, tokenEqual, "bar"}},
-	{"foo = bar]quux", []interface{}{"foo", tokenEqual, errors.New(`at "foo = bar]": premature ]`)}},
+	{"foo = bar]quux", []interface{}{"foo", tokenEqual, errors.New(`at "foo = bar]": premature ']'`)}},
 	{"foo = bar[quux", []interface{}{"foo", tokenEqual, errors.New(`at "foo = bar[quux": premature end of input`)}},
 	{"foo = bar[qu[ux", []interface{}{"foo", tokenEqual, errors.New(`at "foo = bar[qu[ux": premature end of input`)}},
 	{"foo = bar[qu[ux]", []interface{}{"foo", tokenEqual, errors.New(`at "...oo = bar[qu[ux]": premature end of input`)}},
-	{"]", []interface{}{errors.New(`at "]": premature ]`)}},
+	{"]", []interface{}{errors.New(`at "]": premature ']'`)}},
 	{"[", []interface{}{errors.New(`at "[": premature end of input`)}},
 	{"\ufefffoo", []interface{}{errors.New("at \"\ufffd\": byte order mark character not supported")}},
 	{"fo\ufeffo", []interface{}{errors.New("at \"fo\ufffd\": byte order mark character not supported")}}, // \ufffd is �
 	{"fo\ufffdo", []interface{}{errors.New("at \"fo\ufffd\": invalid character")}},
-	{`foo \= \[x: \$$X\\`, []interface{}{"foo", "=", "[x:", `\$$X\`}},
-	{`foo \= \[x: \$$X\]`, []interface{}{"foo", "=", "[x:", `\$$X]`}},
+	{`foo \= \[x: \$$X\\`, []interface{}{"foo", "=", "[x:", `$$X\`}},
+	{`foo \= \[x: \$$X\]`, []interface{}{"foo", "=", "[x:", `$$X]`}},
+
+	{`$[]`, []interface{}{"$[]"}},
+	{`$[x]`, []interface{}{"$[x]"}},
+	{`$[symbol]`, []interface{}{"$[symbol]"}},
+	{`foo = $[symbol]`, []interface{}{"foo", tokenEqual, "$[symbol]"}},
+	{`foo = [$[symbol]]`, []interface{}{"foo", tokenEqual, "$[symbol]"}},
+	{`foo = [[$[symbol]]]`, []interface{}{"foo", tokenEqual, "[$[symbol]]"}},
+	{`foo = [[$[symbol]]]`, []interface{}{"foo", tokenEqual, "[$[symbol]]"}},
+	{`foo = abc$[symbol]cba etc.`, []interface{}{"foo", tokenEqual, "abc$[symbol]cba", "etc."}},
+	{`foo = \ $[symbol]\]`, []interface{}{"foo", tokenEqual, " $[symbol]]"}},
+	{`foo = \$[symbol]`, []interface{}{"foo", tokenEqual, "$symbol"}},
+	{`foo = $[s mbol]`, []interface{}{"foo", tokenEqual, errors.New(`at "foo = $[s ": character invalid in symbol: ' '`)}},
+	{`foo = $[s[mbol]`, []interface{}{"foo", tokenEqual, errors.New(`at "foo = $[s[": character invalid in symbol: '['`)}},
+	{`foo = $[s=mbol]`, []interface{}{"foo", tokenEqual, errors.New(`at "foo = $[s=": character invalid in symbol: '='`)}},
+	{`foo = $[s\mbol]`, []interface{}{"foo", tokenEqual, errors.New(`at "foo = $[s\": character invalid in symbol: '\'`)}},
+	{`foo = $[s$mbol]`, []interface{}{"foo", tokenEqual, errors.New(`at "foo = $[s$": character invalid in symbol: '$'`)}},
+	{`$foo = bar`, []interface{}{"$foo", tokenEqual, "bar"}},
+	{`$foo = $[bar] etc.`, []interface{}{"$foo", tokenEqual, "$[bar]", "etc."}},
+	{`$foo = $[s\mbol]`, []interface{}{"$foo", tokenEqual, errors.New(`at "$foo = $[s\": character invalid in symbol: '\'`)}},
+	{`$foo = $[s+mbol]`, []interface{}{"$foo", tokenEqual, errors.New(`at "$foo = $[s+": character invalid in symbol: '+'`)}},
+
+	{`$[_]`, []interface{}{"value of _"}},
+	{`$[_x]`, []interface{}{"value of _x"}},
+	{`$[_symbol]`, []interface{}{"value of _symbol"}},
+	{`foo = $[_symbol]`, []interface{}{"foo", tokenEqual, "value of _symbol"}},
+	{`foo = [$[_symbol]]`, []interface{}{"foo", tokenEqual, "value of _symbol"}},
+	{`foo = [[$[_symbol]]]`, []interface{}{"foo", tokenEqual, "[value of _symbol]"}},
+	{`foo = [[$[_symbol]]]`, []interface{}{"foo", tokenEqual, "[value of _symbol]"}},
+	{`foo = abc$[_symbol]cba etc.`, []interface{}{"foo", tokenEqual, "abcvalue of _symbolcba", "etc."}},
+	{`foo = \ $[_symbol]\]`, []interface{}{"foo", tokenEqual, " value of _symbol]"}},
+	{`$foo = $[_bar] etc.`, []interface{}{"$foo", tokenEqual, "value of _bar", "etc."}},
+
+	{`$[ERROR]`, []interface{}{errors.New(`at "$[ERROR]": error resolving "ERROR": (simulated error)`)}},
+
+	{`$a`, []interface{}{`$a`}},
+	{`$$`, []interface{}{`$$`}},
+	{`$\.`, []interface{}{`$\.`}},
+	{`$\a`, []interface{}{`$\a`}},
+	{`$\[`, []interface{}{`$[`}},
+	{`$\]`, []interface{}{`$]`}},
+	{` x `, []interface{}{`x`}},
+	{` $ `, []interface{}{`$`}},
+	{` $=`, []interface{}{`$`, tokenEqual}},
+
+	{`foo=$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=$]": premature ']'`)}},
+	{`foo=$[bar$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=$[bar$": character invalid in symbol: '$'`)}},
+	{`foo=[bar$]`, []interface{}{`foo`, tokenEqual, "bar$"}},
+	{`foo=x[bar$]y`, []interface{}{`foo`, tokenEqual, "xbar$y"}},
+	{`foo=[ [bar$] ]`, []interface{}{`foo`, tokenEqual, " [bar$] "}},
+
+	{`\$[ a \]b] = x`, []interface{}{`$ a ]b`, tokenEqual, "x"}},
 }
 
 func TestTokenizerOnGenericData(t *testing.T) {
-	tkz := newTokenizer(NewConfig())
+	tkz := newTokenizer(NewConfig(), resolver)
 	for _, data := range tokTestData {
 		tkz.Reset([]byte(data.input))
 		for i, exp := range data.expect {
@@ -59,21 +135,21 @@ func TestTokenizerOnGenericData(t *testing.T) {
 }
 
 func TestTokenizer(t *testing.T) {
-	tokenizer := newTokenizer(NewConfig())
+	tokenizer := newTokenizer(NewConfig(), resolver)
 	// no reset() so must get tokEnd
 	tok, s, err := tokenizer.Next()
 	if err != nil {
 		t.Errorf("error!")
 	}
-	if tok != tokenEnd || len(s) > 0 {
-		t.Errorf("tok, s == %v, \"%s\" expect: %v, %s", tok, s, tokenEnd, "\"\"")
+	if tok != tokenEnd || s != nil {
+		t.Errorf("tok, s == %v, \"%s\" expect: %v, %s", tok, s.s, tokenEnd, "\"\"")
 	}
 }
 
 func TestTokenizerCallAfterError(t *testing.T) {
-	tkz := newTokenizer(NewConfig())
+	tkz := newTokenizer(NewConfig(), resolver)
 	tkz.Reset([]byte("]foo"))
-	tkz.expectError("]foo", 0, `at "]": premature ]`, t)
+	tkz.expectError("]foo", 0, `at "]": premature ']'`, t)
 	defer panicHandler("Next() called after an error", t)
 	tkz.expectString("]foo", 1, "foo", t)
 }
@@ -99,8 +175,8 @@ func (tkz *tokenizer) expectToken(input string, pos int, expectedToken token, t 
 	if tok != expectedToken {
 		t.Errorf("T \"%s\"[%d]: token: %v, expected: %v", input, pos, tok, expectedToken)
 	}
-	if len(s) > 0 {
-		t.Errorf("T \"%s\"[%d]: unexpected token string: %s", input, pos, s)
+	if s != nil {
+		t.Errorf("T \"%s\"[%d]: unexpected token string: %s", input, pos, s.s)
 	}
 }
 
@@ -113,8 +189,11 @@ func (tkz *tokenizer) expectString(input string, pos int, expectedString string,
 	if tok != tokenString {
 		t.Errorf("S \"%s\"[%d]: token: %v, expected: %v", input, pos, tok, tokenString)
 	}
-	if s != expectedString {
-		t.Errorf("S \"%s\"[%d]: token string: %s, expected %s", input, pos, s, expectedString)
+	if s == nil {
+		t.Errorf("S \"%s\"[%d]: no token string, expected %s", input, pos, expectedString)
+	}
+	if s.s != expectedString {
+		t.Errorf("S \"%s\"[%d]: token string: %s, expected %s", input, pos, s.s, expectedString)
 	}
 }
 
@@ -147,14 +226,16 @@ func TestStack(t *testing.T) {
 
 func TestStack3(t *testing.T) {
 	var st stack
-	st.push(tsBracket)
-	st.push(tsBracket)
-	if len(st) != 2 {
-		t.Errorf("size not 2: %d", len(st))
+	st.pushIfEmpty(tsString)
+	if len(st) != 1 {
+		t.Errorf("size not 1: %d", len(st))
 	}
-	st.push(tsString)
-	st.push(tsString)
-	st.push(tsString)
+	st.push(tsBracket)
+	st.push(tsBracket)
+	if len(st) != 3 {
+		t.Errorf("size not 3: %d", len(st))
+	}
+	st.pushIfEmpty(tsString)
 	if len(st) != 3 {
 		t.Errorf("size not 3: %d", len(st))
 	}

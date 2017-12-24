@@ -420,7 +420,6 @@ func TestArgsStandaloneName(t *testing.T) {
 }
 
 func TestArgsStandaloneValue(t *testing.T) {
-
 	a := getParser()
 	s := []string{}
 	a.Def("", &s).Aka("ANONYMOUS")
@@ -446,8 +445,8 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a = getParser()
 	s = make([]string, 0, 0)
 	a.Def("", &s)
-	err = a.Parse("[contains an $$unresolved ref]")
-	expected = `cannot resolve standalone value "contains an $$unresolved ref"`
+	err = a.Parse("[contains an $[unresolved] ref]")
+	expected = `cannot resolve standalone value "contains an $[unresolved] ref"`
 	if err == nil {
 		t.Errorf("missing error: %s", expected)
 	} else if err.Error() != expected {
@@ -457,44 +456,55 @@ func TestArgsStandaloneValue(t *testing.T) {
 	a = getParser()
 	x := ""
 	a.Def("", &x).Verbatim()
-	err = a.Parse("[contains an $$unresolved ref]")
+	err = a.Parse("[contains an $[unresolved] ref]")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if x != "contains an $$unresolved ref" {
+	if x != "contains an $[unresolved] ref" {
 		t.Errorf("unexpected value: %s", x)
 	}
 
 	a = getParser()
 	s = []string{}
 	a.Def("", &s).Verbatim()
-	err = a.Parse("[contains an $$unresolved ref]")
+	err = a.Parse("[contains an $[unresolved] ref]")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(s, []string{"contains an $$unresolved ref"}) {
+	if !reflect.DeepEqual(s, []string{"contains an $[unresolved] ref"}) {
 		t.Errorf("unexpected values: %v", s)
 	}
 
 	a = getParser()
 	arr := [1]string{}
 	a.Def("", &arr).Verbatim()
-	err = a.Parse("[contains an $$unresolved ref]")
+	err = a.Parse("[contains an $[unresolved] ref]")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if arr[0] != "contains an $$unresolved ref" {
+	if arr[0] != "contains an $[unresolved] ref" {
 		t.Errorf("unexpected values: %v", s)
 	}
 
 	a = getParser()
 	sl := []string{}
 	a.Def("z", &sl)
-	err = a.Parse(`$X = bar z=foo z=\= z=\[x: z=\$$X\]`)
+	err = a.Parse(`$X = bar z=foo z=\= z=\[x: z=$[X]\]`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar]`}) {
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `bar]`}) {
+		t.Errorf("unexpected values: %v", sl)
+	}
+
+	a = getParser()
+	sl = []string{}
+	a.Def("z", &sl)
+	err = a.Parse(`$X = bar z=foo z=\= z=\[x: z=\$[X]\]`)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `$X]`}) {
 		t.Errorf("unexpected values: %v", sl)
 	}
 
@@ -502,33 +512,33 @@ func TestArgsStandaloneValue(t *testing.T) {
 	sl = []string{}
 	a.Def("", &sl)
 	// same as previous but anonymous
-	err = a.Parse(`$X = bar foo \= \[x: \$$X\]`)
+	err = a.Parse(`$X = bar foo \= \[x: \$[X]\]`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar]`}) {
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `$X]`}) {
 		t.Errorf("unexpected values: %v", sl)
 	}
 
 	a = getParser()
 	sl = []string{}
 	a.Def("", &sl)
-	err = a.Parse(`$X = bar \$$X \\\= \[x:\ :x\]`)
+	err = a.Parse(`$X = bar \$[X] \\\= \[x:\ :x\]`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(sl, []string{`\bar`, `\=`, "[x: :x]"}) {
+	if !reflect.DeepEqual(sl, []string{`$X`, `\=`, "[x: :x]"}) {
 		t.Errorf("unexpected values: %v", sl)
 	}
 
 	a = getParser()
 	sl = []string{}
 	a.Def("", &sl)
-	err = a.Parse(`$X = bar foo \= \[x: \$$X\\`)
+	err = a.Parse(`$X = bar foo \= \[x: \$[X]\\`)
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `\bar\`}) {
+	if !reflect.DeepEqual(sl, []string{"foo", "=", "[x:", `$X\`}) {
 		t.Errorf("unexpected values: %v", sl)
 	}
 
@@ -557,7 +567,7 @@ func TestArgsSimpleMacro(t *testing.T) {
 	foo := []string{}
 	a.Def("foo", &foo)
 	err := a.Parse(
-		"$macro=[foo=[number $$count]] $count=1 macro=[$macro]" +
+		"$macro=[foo=[number $[count]]] $count=1 macro=[$macro]" +
 			" reset=$count $count=2 macro=$macro")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
@@ -572,12 +582,13 @@ func TestArgsMacro(t *testing.T) {
 	foo := []string{}
 	a.Def("foo", &foo)
 	err := a.Parse(
-		"$quux=QUUX $macro1=[foo=] $macro2=[[bar $$quux]] macro=[$macro1 $macro2]" +
-			" reset=$quux $quux=BAF macro=[$macro1 $macro2]")
+		"$macro1=[foo=] $macro2=[[bar $[quux]]] $quux=QUUX macro=[$macro1 $macro2]" +
+			" reset=$quux $quux=BAF macro=[$macro1 $macro2]" +
+			" reset=$quux $quux=baz macro=[$macro1 $macro2]")
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
-	if !reflect.DeepEqual(foo, []string{"bar QUUX", "bar BAF"}) {
+	if !reflect.DeepEqual(foo, []string{"bar QUUX", "bar BAF", "bar baz"}) {
 		t.Errorf("unexpected values: %v", foo)
 	}
 }
@@ -811,7 +822,7 @@ func TestOperatorSkip(t *testing.T) {
 	var x uint8
 	a.Def("x", &x)
 	if err := matchResult(
-		a.Parse("x=255 --=[x=100 foo=$$UNDEF, no error because quotes are balanced]"),
+		a.Parse("x=255 --=[x=100 foo=$[UNDEF], no error because quotes are balanced]"),
 		func() error {
 			if x != 255 {
 				return fmt.Errorf("x not 255, but %d", x)
@@ -969,7 +980,7 @@ func TestOperatorIncludeKeys2(t *testing.T) {
 	a.Def("foo", &foo)
 	a.Def("bar", &bar)
 	if err := matchResult(
-		a.Parse("include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password"),
+		a.Parse("include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$[sym1] bar=$[password]"),
 		func() error {
 			if foo != "u648" || bar != "!=.sesam567" {
 				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
@@ -987,7 +998,24 @@ func TestOperatorIncludeKeys3(t *testing.T) {
 	a.Def("foo", &foo)
 	a.Def("bar", &bar)
 	if err := matchResult(
-		a.Parse("$sym1=usym include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password"),
+		a.Parse("$sym1=usym include=[testdata/foreign1.test keys=[user=$sym1 password=$password]] foo=$[sym1] bar=$[password]"),
+		func() error {
+			if foo != "usym" || bar != "!=.sesam567" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+func TestOperatorIncludeKeys3a(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("$KEY=$sym1 $sym1=usym include=[testdata/foreign1.test keys=[user=$[KEY] password=$password]] foo=$[sym1] bar=$[password]"),
 		func() error {
 			if foo != "usym" || bar != "!=.sesam567" {
 				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
@@ -1005,7 +1033,7 @@ func TestOperatorIncludeKeys4(t *testing.T) {
 	a.Def("foo", &foo)
 	a.Def("bar", &bar)
 	if err := matchResult(
-		a.Parse(`include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=$sym1 password=$password]] foo=$$sym1 bar=$$password`),
+		a.Parse(`include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=$sym1 password=$password]] foo=$[sym1] bar=$[password]`),
 		func() error {
 			if foo != "u649" || bar != "!=.sesam568" {
 				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
@@ -1022,7 +1050,7 @@ func TestOperatorIncludeKeys5(t *testing.T) {
 	pw := ""
 	a.Def("usr", &usr)
 	a.Def("pw", &pw)
-	input := `include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$$PASS dump=[usr $PASS]`
+	input := `include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$[PASS] dump=[usr $PASS]`
 	expected := "usr u649\n$PASS R !=.sesam568\n"
 	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
 	if err != nil {
@@ -1041,7 +1069,7 @@ func TestOperatorReset(t *testing.T) {
 	var x uint8
 	a.Def("x", &x)
 	if err := matchResult(
-		a.Parse("$X=42 reset=[$X] $X=255 x=$$X --=[x=100]"),
+		a.Parse("$X=42 reset=[$X] $X=255 x=$[X] --=[x=100]"),
 		func() error {
 			if x != 255 {
 				return fmt.Errorf("x not 255, but %d", x)
@@ -1058,7 +1086,7 @@ func TestOperatorDump(t *testing.T) {
 	a := getParser()
 	empty := ""
 	a.Def("", &empty)
-	input := "import=[$TESTENV $NONESUCH] []=[$$TESTENV] dump=[$TESTENV $NONESUCH []]"
+	input := "import=[$TESTENV $NONESUCH] []=[$[TESTENV]] dump=[$TESTENV $NONESUCH []]"
 	expected := "$TESTENV R value of TESTENV\n? $NONESUCH\n[] value of TESTENV\n"
 	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
 	if err != nil {
@@ -1074,9 +1102,9 @@ func TestOperatorDumpWithCond(t *testing.T) {
 	empty := ""
 	a.Def("", &empty).Opt()
 	input := "import=[$HOMEY $NONESUCH] " +
-		"cond=[if=[$HOMEY] then=[$$HOMEY] else=[dump=[comment=[$$HOMEY not set]]]] " +
+		"cond=[if=[$HOMEY] then=[$[HOMEY]] else=[dump=[comment=[$[HOMEY] not set]]]] " +
 		"dump=[$HOMEY $NONESUCH []]"
-	expected := "$$HOMEY not set\n? $HOMEY\n? $NONESUCH\n[] \n"
+	expected := "$[HOMEY] not set\n? $HOMEY\n? $NONESUCH\n[] \n"
 	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
@@ -1095,9 +1123,9 @@ func TestOperatorDumpWithCondRenamed(t *testing.T) {
 	empty := ""
 	a.Def("", &empty).Opt()
 	input := "IMPORTIEREN=[$HOMEY $NONESUCH] " +
-		"KONDITIONAL=[if=[$HOMEY] then=[$$HOMEY] else=[DUMPIEREN=[comment=[$$HOMEY not set]]]] " +
+		"KONDITIONAL=[if=[$HOMEY] then=[$[HOMEY]] else=[DUMPIEREN=[comment=[$[HOMEY] not set]]]] " +
 		"DUMPIEREN=[$HOMEY $NONESUCH []]"
-	expected := "$$HOMEY not set\n? $HOMEY\n? $NONESUCH\n[] \n"
+	expected := "$[HOMEY] not set\n? $HOMEY\n? $NONESUCH\n[] \n"
 	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
@@ -1300,23 +1328,21 @@ func setupTestArgsPrintDoc(a *args.Parser) (err error) {
 }
 
 func TestSubsBasic(t *testing.T) {
-
 	var testData = []struct {
 		input  string
 		expect string
 	}{
-		{"$a=b $c=$$a foo=$$c", "b"},
-		{"$a=b $c=$$a foo=[ $$c ]", " b "},
-		// order relevant:
-		{"foo=[ $$c ] $c=$$a $a=b", " $$c "},
-		{"$a=b $c=$$a foo=[ $$cx ]", " $$cx "},
-		{"$a=b $c=$$a foo=[ $$$c$x ]", " bx "},
-		// // escaping has no effect on symbols:
-		{`$a=b $c=\$$a foo=$$c`, `\b`},
-		{`$c=$$a foo=$$c`, `$$a`},
+		{"$a=b $c=$[a] foo=$[c]", "b"},
+		{"$a=b $c=$[a] foo=[ $[c] ]", " b "},
+		// // order relevant:
+		{"foo=[ $[c] ] $c=$[a] $a=b", " $[c] "},
+		{"$a=b $c=$[a] foo=[ $[c]x ]", " bx "},
+		// escaping has no effect on symbols:
+		{`$a=b $c=\$[a] foo=$[c]`, `$a`},
+		{`$c=$[a] foo=$[c]`, `$[a]`},
 		// first wins:
-		{"$a=b $a=x $c=$$a foo=$$c", "b"},
-		{"$VAR=w3 foo=[n=a pd=$$VAR cn=[svc = $$VAR] co=2]", "n=a pd=w3 cn=[svc = w3] co=2"},
+		{"$a=b $a=x $c=$[a] foo=$[c]", "b"},
+		{"$VAR=w3 foo=[n=a pd=$[VAR] cn=[svc = $[VAR]] co=2]", "n=a pd=w3 cn=[svc = w3] co=2"},
 	}
 
 	for _, data := range testData {
@@ -1342,9 +1368,9 @@ func TestSubsCycle(t *testing.T) {
 		input  string
 		expect string
 	}{
-		{"$a=$$b $b=$$a foo=$$b", `Parse error on foo: cyclical symbol definition detected: "b"`},
-		{"$a=$$b $b=$$a foo=$$a", `Parse error on foo: cyclical symbol definition detected: "a"`},
-		{"$a=$$b $b=$$c $c=$$d $d=$$e $e=$$a foo=$$a", `Parse error on foo: cyclical symbol definition detected: "a"`},
+		{"$a=$[b] $b=$[a] foo=$[b]", `Parse error on foo: cyclical symbol definition detected: "b"`},
+		{"$a=$[b] $b=$[a] foo=$[a]", `Parse error on foo: cyclical symbol definition detected: "b"`},
+		{"$a=$[b] $b=$[c] $c=$[d] $d=$[e] $e=$[a] foo=$[a]", `Parse error on foo: cyclical symbol definition detected: "e"`},
 	}
 	for _, data := range testData {
 		a := getParser()
@@ -1363,7 +1389,7 @@ func TestSubsName(t *testing.T) {
 	a := getParser()
 	foo := ""
 	a.Def("foo", &foo)
-	err := a.Parse("$oo=oo $foo=f$$oo $$foo=bar")
+	err := a.Parse("$oo=oo $foo=f$[oo] $[foo]=bar")
 	if err != nil {
 		t.Errorf(`unexpected error message: "%s"`, err.Error())
 	}
@@ -1372,8 +1398,8 @@ func TestSubsName(t *testing.T) {
 	}
 
 	a = getParser()
-	expected := `cannot resolve name in "$$quux = bar"`
-	err = a.Parse("$$quux=bar")
+	expected := `cannot resolve name in "$[quux] = bar"`
+	err = a.Parse("$[quux]=bar")
 	if err == nil {
 		t.Errorf(`missing error message: "%s"`, expected)
 	} else if err.Error() != expected {
@@ -1383,8 +1409,8 @@ func TestSubsName(t *testing.T) {
 	a = getParser()
 	foo = ""
 	a.Def("foo", &foo)
-	expected = `cannot resolve name in "$$foo = bar"`
-	err = a.Parse("$$foo=bar $foo=f$$oo $oo=oo")
+	expected = `cannot resolve name in "$[foo] = bar"`
+	err = a.Parse("$[foo]=bar $foo=f$[oo] $oo=oo")
 	if err == nil {
 		t.Errorf(`missing error message: "%s"`, expected)
 	} else if err.Error() != expected {
@@ -1398,11 +1424,11 @@ func TestSubsMacro1(t *testing.T) {
 	fooa := ""
 	a.Def("foox", &foox).Verbatim()
 	a.Def("fooa", &fooa).Verbatim()
-	err := a.Parse("$BODY = [arg1=$$ARG1 arg2=$$ARG2] " +
-		"foox=[$ARG1=x $ARG2=y $$BODY] fooa=[$ARG1=a $ARG2=b $$BODY]")
+	err := a.Parse("$BODY = [arg1=$[ARG1] arg2=$[ARG2]] " +
+		"foox=[$ARG1=x $ARG2=y $[BODY]] fooa=[$ARG1=a $ARG2=b $[BODY]]")
 
-	expectedFoox := "$ARG1=x $ARG2=y arg1=$$ARG1 arg2=$$ARG2"
-	expectedFooa := "$ARG1=a $ARG2=b arg1=$$ARG1 arg2=$$ARG2"
+	expectedFoox := "$ARG1=x $ARG2=y arg1=$[ARG1] arg2=$[ARG2]"
+	expectedFooa := "$ARG1=a $ARG2=b arg1=$[ARG1] arg2=$[ARG2]"
 
 	if err != nil {
 		t.Errorf(`unexpected error message: "%s"`, err.Error())

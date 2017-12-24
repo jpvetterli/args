@@ -4,6 +4,15 @@ import (
 	"fmt"
 )
 
+type cycleError struct {
+	s string
+}
+
+func (e cycleError) Error() string {
+	return fmt.Sprintf(`cyclical symbol definition detected: "%s"`, e.s)
+
+}
+
 // symval encapsulates a symbol table value.
 // Its zero value is the initial state.
 type symval struct {
@@ -12,16 +21,15 @@ type symval struct {
 }
 
 // symtab is a lazy symbol table. Values are resolved when needed, and resolving
-// a value can trigger the resolution of another one. All  symbols use the same
-// prefix.
+// a value can trigger the resolution of another one. All symbols use the same
+// prefix, available in config.
 type symtab struct {
 	config *Config
 	table  map[string]*symval
 	cycle  map[string]bool
 }
 
-// newSymtab returns a new symbol table with a substituter using the given
-// symbol prefix.
+// newSymtab returns a new symbol table using the config.
 func newSymtab(config *Config) symtab {
 	return symtab{
 		config: config,
@@ -31,7 +39,7 @@ func newSymtab(config *Config) symtab {
 }
 
 // put adds an entry to the symbol table and returns true if s agrees with
-// the syntax of a symbol definition.  If the entry is already present it is
+// the syntax of a symbol definition. If the entry is already present it is
 // left untouched. This behavior is known as "first wins". The method returns
 // false if symbol does not agree with the syntax. The syntax is described in
 // detail in the package documentation.
@@ -42,6 +50,7 @@ func (t *symtab) put(s, value string) bool {
 	if len(r) > 1 && r[0] == prefix && r[1] != prefix {
 		sym := string(r[1:])
 		if _, ok := t.table[sym]; !ok {
+			// initially not resolved
 			t.table[sym] = &symval{s: value}
 		}
 		return true
@@ -55,7 +64,7 @@ func (t *symtab) put(s, value string) bool {
 // dependency is detected. The method updates the symbol table.
 func (t *symtab) get(symbol string) (value *symval, err error) {
 	if _, ok := t.cycle[symbol]; ok {
-		return nil, fmt.Errorf(`cyclical symbol definition detected: "%s"`, symbol)
+		return nil, cycleError{s: symbol}
 	}
 	t.cycle[symbol] = true
 	defer func() {
@@ -69,14 +78,19 @@ func (t *symtab) get(symbol string) (value *symval, err error) {
 		return sv, nil
 	}
 
-	// next stmt can result in recursive call
-	symv, modified, err := substitute(sv.s, t)
+	// not resolved, scan recursively the *quoted* value
+	tkz := newTokenizer(t.config, func(s string) (*symval, error) { return t.get(s) })
+	quoted := string(t.config.GetSpecial(SpecOpenQuote)) +
+		sv.s + string(t.config.GetSpecial(SpecCloseQuote))
+	tkz.Reset([]byte(quoted))
+	token, sv1, err := tkz.Next()
+
 	if err != nil {
 		return nil, err
 	}
-	if modified {
-		sv.s = symv.s
+	if token != tokenString {
+		return nil, fmt.Errorf(`recursive scan failed: %s`, quoted)
 	}
-	sv.resolved = symv.resolved
-	return sv, nil
+	sv.resolved = sv1.resolved
+	return sv1, nil
 }

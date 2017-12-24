@@ -133,10 +133,9 @@ func ExampleParam_Verbatim() {
 	cmd2 := ""
 	a.Def("cmd1", &cmd1).Verbatim() // IMPORTANT: verbatim
 	a.Def("cmd2", &cmd2).Verbatim()
-	a.Parse("$MACRO = [arg1=$$ARG1 arg2=$$ARG2] " +
-		"cmd1=[$ARG1=x $ARG2=y $$MACRO] " +
-		"cmd2=[$ARG1=a $ARG2=b $$MACRO]")
-
+	a.Parse("$MACRO = [arg1=$[ARG1] arg2=$[ARG2]] " +
+		"cmd1=[$ARG1=x $ARG2=y $[MACRO]] " +
+		"cmd2=[$ARG1=a $ARG2=b $[MACRO]]")
 	for _, s := range []string{cmd1, cmd2} {
 		a = args.NewParser() // IMPORTANT: get a new parser
 		arg1 := ""

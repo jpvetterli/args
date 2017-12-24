@@ -4,6 +4,17 @@ import (
 	"testing"
 )
 
+func TestGetNonExistent(t *testing.T) {
+	table := newTestingSymtab('$')
+	v, err := table.get("a")
+	if err != nil {
+		t.Errorf(`unexpected error: %v`, err)
+	}
+	if v != nil {
+		t.Errorf(`found "%s", expected nothing`, v.s)
+	}
+}
+
 func TestPutFirstWins(t *testing.T) {
 	table := newTestingSymtab('$')
 	table.put("$a0", "1")
@@ -14,6 +25,7 @@ func TestPutFirstWins(t *testing.T) {
 		t.Errorf(`found "%s", expected "%s"`, v.s, expected)
 	}
 	// do it again and use debugger to follow execution path
+	// (watch: no need to resolve the second time)
 	v, _ = table.get("a0")
 	if v.s != "1" {
 		t.Errorf(`found "%s", expected "%s"`, v.s, expected)
@@ -22,8 +34,8 @@ func TestPutFirstWins(t *testing.T) {
 
 func TestGetUnresolvedValue(t *testing.T) {
 	table := newTestingSymtab('$')
-	table.put("$a1", "$$b1")
-	expected := "$$b1"
+	table.put("$a1", "$[b1]")
+	expected := "$[b1]"
 	v, _ := table.get("a1")
 	if v.s != expected {
 		t.Errorf(`found "%s", expected "%s"`, v.s, expected)
@@ -32,8 +44,8 @@ func TestGetUnresolvedValue(t *testing.T) {
 
 func TestGetResolvedValue(t *testing.T) {
 	table := newTestingSymtab('$')
-	table.put("$a2", "a $$b2 e")
-	table.put("$b2", "b $$c2 d")
+	table.put("$a2", "a $[b2] e")
+	table.put("$b2", "b $[c2] d")
 	table.put("$c2", "C")
 	expected := "a b C d e"
 	v, _ := table.get("a2")
@@ -44,9 +56,9 @@ func TestGetResolvedValue(t *testing.T) {
 
 func TestGetCycle(t *testing.T) {
 	table := newTestingSymtab('$')
-	table.put("$a3", "a $$b3 e")
-	table.put("$b3", "b $$c3 d")
-	table.put("$c3", "$$a3")
+	table.put("$a3", "a $[b3] e")
+	table.put("$b3", "b $[c3] d")
+	table.put("$c3", "$[a3]")
 	expected := `cyclical symbol definition detected: "a3"`
 	// defer panicHandler(expected, t)
 	v, err := table.get("a3")

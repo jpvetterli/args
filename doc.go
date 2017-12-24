@@ -69,6 +69,29 @@ freely):
   ]
   foo []=bar thing = [a 3d thing with "blanks" etc.]
 
+Symbols make it easy to override parameters in a file. Modify the file to use a
+symbol for the 3d value:
+
+  --= [
+      thing = foo thing=bar thing = [a 3d thing with "blanks" etc.]
+      foo bar [a 3d thing with "blanks" etc.]
+  ]
+  $DEFAULT3 = [a 3d thing with "blanks" etc.]
+  foo []=bar thing = $[DEFAULT3]
+
+The value can be overriden by setting the symbol DEFAULT3 before including the
+file:
+
+  $DEFAULT3 = [something else] include = parameters.txt
+
+This works because the first value of a symbol wins. (For a scalar parameter it
+is the last one.) The syntax uses special characters, like $, [, and ] in these
+examples. In some environments, the predefined special characters can be
+problematic, but they can be reconfigured easily by the program, and the above
+input could look like this:
+
+  ⌘DEFAULT3: «something else» include: parameters.txt
+
 In the args package, everything is a name-value pair: parameters, operators like
 include and -- (yes, it's a name). To keep simple things simple, it is possible
 to omit the name when defined as empty, the parameter is of type bool, and
@@ -99,8 +122,7 @@ character. Unless configured otherwise, these characters are:
 
 White space is a sequence of one or more characters for which unicode.IsSpace
 returns true. The escape character suppresses the effect of white space and
-special characters, with the exception of the symbol prefix, which cannot be
-escaped. When it has no effect, the escape is a normal character.
+special characters. When it has no effect, the escape is a normal character.
 
 An empty name is usually omitted, and in this case the separator must also be
 omitted. Parameters with an empty name are known as anonymous and their values
@@ -109,14 +131,16 @@ is interpreted as that name with the value "true". This effect is usually what
 is wanted, but if necessary, can be avoided by using a quoted empty string: [].
 
 White space around separators is ignored but is significant between words, as it
-separates distinct values. It can be included in names and values by
-quoting. When a quoted string contains a nested quoted string, quotes must be
-balanced.  Outermost quotes are removed but nested quotes are kept.
+separates distinct values. It can be included in values by quoting. When a
+quoted string contains a nested quoted string, quotes must be balanced.
+Outermost quotes are removed but nested quotes are kept. A symbol is a name
+preceded by the symbol prefix. A symbol reference is a symbol prefix followed by
+a name between quotes.
 
 The following examples use the default set of special characters:
 
   foo = bar                (1 name with 1 value)
-  foo=bar foo=baz foo=quux (1 name with 3 values)
+  foo=bar foo=baz foo=quux (1 name with 3 values, assuming foo is an array)
   quux foo=bar   baz baf   (1 name with 1 value, 3 standalone values)
   foo = [ bar baz ]        (1 name with value " bar baz ")
   foo = [bar \]baz]        (1 name with value "bar ]baz")
@@ -126,33 +150,32 @@ The following examples use the default set of special characters:
   foo                      (foo defined as boolean: 1 name with value "true")
   [] = bar                 (1 standalone value, empty name explicit)
   $sym = bar               (definition of symbol sym with value "bar")
-  $X=bar foo = [x: $$X ]   (name foo with value "x: bar ")
-  $X = bar \$$X \\\= \[x:\ :x\]
-                           (3 standalone values: "\bar", "\=", "[x: :x]")
+  $X=bar foo = [x: $[X] ]  (name foo with value "x: bar ")
+  $X = bar \$$[X] \\\= \[x:\ :x\]
+                           (3 standalone values: "$bar", "\=", "[x: :x]")
 
-The order in which name-value pairs are specified is not significant. The
-program will not know if parameter foo was specified before parameter bar.
-Multiple values of parameters can be mixed in any order. On the other hand,
-multiple parameter values are kept in specification sequence. Given "foo=1 bar=a
-foo=2 bar=b bar=c foo=3", the program will see foo=[1 2 3] and var=[a b c] but
-will not know if foo came before bar.
+The order in which parameters with different names are specified is not
+significant. The program will not know if parameter foo was specified before
+parameter bar. Multiple values of parameters can be mixed in any order. On the
+other hand, multiple parameter values are kept in specification sequence. If foo
+and bar are array or slice parameters, with an input like "foo=1 bar=a foo=2
+bar=b bar=c foo=3", the program will see foo=[1 2 3] and bar=[a b c] but will
+not know if foo came before bar. if foo and bar are scalar parameters, the last
+value wins and the program will see foo=3 and bar=c.
 
 Symbols And Substitution
 
 Parameter names are given by the program but symbols can be freely chosen, as
 long as they follow the same syntax rules as parameter names. A symbol is
-defined by prefixing it once with the symbol prefix. A reference consists
-of a symbol preceded either by 2 prefixes (as in the string "my $$foo
-is rich") or preceded by 3 prefixes and followed by 1 (as in "$$$foo$bar"). The
-second notation is ugly, but useful when a symbol reference is directly followed
-by a valid symbol character.
+defined by prefixing it once with the symbol prefix. A reference consists of a
+symbol followed by name between quotes (as in the string "my $[foo] is rich").
 
 Parameters and symbols are in distinct name spaces, and it is possible to use
-the name of a parameter for a symbol, as in "$foo=bar foo=$$foo" which is
-equivalent to "foo=bar". Symbols must be defined before use: in "foo=$$x
+the name of a parameter for a symbol, as in "$foo=bar foo=$[foo]" which is
+equivalent to "foo=bar". Symbols must be defined before use: in "foo=$[x]
 $x=bar", the value of "foo" cannot be resolved. Redefining a symbol has no
-effect:  the first wins (with parameters, it is the last that wins). The
-specification "$x=bar $x=quux foo=$$x" is equivalent to "foo=bar".
+effect:  the first wins (unlike parameters, where the last wins). The
+specification "$x=bar $x=quux foo=$[x]" is equivalent to "foo=bar".
 
 Omission And Repetition
 
@@ -160,9 +183,9 @@ When a parameter is defined, it gets a target, which is the program variable
 that will take values from the parameter. The target's type determines the
 number and type of values the parameter can take. A target with a simple type
 can take one value. If multiple values are specified, the last value wins
-(contrast this with symbols, where the first wins). If no value is specified, an
-error occurs, unless the parameter has been defined as optional. The initial
-value of the target is the default value of an optional parameter.
+(again, contrast this with symbols, where the first wins). If no value is
+specified, an error occurs, unless the parameter has been defined as optional.
+The initial value of the target is the default value of an optional parameter.
 
 If the target is an array type, the number of values specified must be exactly
 equal to the array length. If the target is a slice type, the number of values
@@ -197,7 +220,7 @@ can span multiple lines and can contain nested comments.
 
   --=[this is a comment --=[this is nested comment]
   answer = 42
-  this is $$anything that can be scanned \]
+  this is $[anything] that can be scanned \]
   ]
 
 The dump operator
@@ -206,13 +229,13 @@ The dump operator is useful for debugging a complex args specification. It takes
 an optional "comment" parameter, and zero or more standalone values. dump
 interprets the values as parameter names and symbols and prints them line by
 line on standard error with their current values. The value of a symbol is
-preceded by R if resolved, else by U. A name or symbol is preceded by ? if
+followed by R if resolved, else by U. A name or symbol is preceded by ? if
 undefined. The empty parameter name is printed between quotes. If a comment is
 specified, it is printed first. A typical use may look like (import is explained
 ahead):
 
-  slic=1 $PATH=locked import=[$PATH $GOPATH $GOBBLEDYGOOK] gopath=$$GOPATH
-  path=$$PATH slic=0.5 slic=42
+  slic=1 $PATH=locked import=[$PATH $GOPATH $GOBBLEDYGOOK] gopath=$[GOPATH]
+  path=$[PATH] slic=0.5 slic=42
   dump = [comment=[dump demo...] slic xyzzy $GOPATH $GOBBLEDYGOOK $PATH $XYZZY]
 
 and produce the output:
@@ -232,7 +255,7 @@ which it interprets as symbols and removes them from the symbol table, if
 present. An error occurs if values are not symbols. It is useful
 because of the "first wins" principle. Contrary to parameter values,
 where the "last wins", once a symbol has been set, its value cannot be
-changed. When for some reason this is annoying the symbol can be
+changed. When for some reason this is annoying, the symbol can be
 reset before taking a new value. For example, the specification:
 
   $SYM1=1 $SYM2=a reset=$SYM2 $SYM1=2 $SYM2=b dump=[$SYM1 $SYM2]
@@ -249,7 +272,7 @@ of values, which it interprets as symbols. For each symbol a value is taken from
 the environment variable with the corresponding name (after removing the symbol
 prefix). The value is inserted into the symbol table unless there is already an
 entry for the symbol ("first wins" principle). If the environment variable does
-not exist,nothing is done. For example, the specification:
+not exist, nothing is done. For example, the specification:
 
   import=[$HOME $NONESUCH] $$HOME dump=[$HOME $NONESUCH []]
 
@@ -271,10 +294,10 @@ auxiliary parameters.
 
 The operator takes a series of values, which it interprets as symbols, gets
 their values from the symbol table without resolving them, and passes them
-recursively to Parse. An error occurs if values are not symbols, if any symbol
-is not found, or if parsing fails. As an example, after parsing the input
+recursively to Parser.Parse. An error occurs if values are not symbols, if any
+symbol is not found, or if parsing fails. As an example, after parsing the input
 
-  $macro=[foo=[number $$count]]
+  $macro=[foo=[number $[count]]]
   $count=1 macro=[$macro]
   reset=$count $count=2 macro=$macro
 
