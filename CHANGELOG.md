@@ -2,7 +2,16 @@
 
 ### Unreleased
 
-* Allow symbol prefix to be escaped.
+* Version 1.0.0
+* Internal code reorganization (files renamed or deleted).
+
+### v0.5.0 (2017-12-24)
+
+The input syntax for symbol references has been modified. A symbol reference is
+now written $[foo]. Previously it was $$foo or $$$foo$. The release is
+compatible from the point of view of programs but is INCOMPATIBLE from the point
+of view of users. Symbols can be escaped. The implementation has been heavily
+refactored (simplified) and the input is now interpreted in a single pass.
 
 ### v0.4.1 (2017-12-21)
 
