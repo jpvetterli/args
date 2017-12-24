@@ -101,9 +101,9 @@ func (t *tokenizer) Reset(input []byte) {
 	t.stack = t.stack[:0]
 }
 
-// Next finds the next token in the input. It returns a token, a slice and an
+// Next finds the next token in the input. It returns a token, a *symval and an
 // error. If and only if the token is tokenError, error is not nil. If and only
-// if the token is tokenString, the string is not empty.
+// if the token is tokenString, the symval is not nil
 func (t *tokenizer) Next() (token, *symval, error) {
 	if len(t.stack) != 0 {
 		if t.stack.top() == tsError {
