@@ -12,7 +12,7 @@ type tokenizer struct {
 	config    *Config
 	input     []byte
 	reader    *bytes.Reader
-	resolve   func(string) (*symval, error)
+	resolver  resolver
 	resolved  bool
 	stringBuf bytes.Buffer
 	symBuf    bytes.Buffer
@@ -26,11 +26,11 @@ func (t *tokenizer) symval() *symval {
 	}
 }
 
-func newTokenizer(configuration *Config, resolve func(string) (*symval, error)) *tokenizer {
+func newTokenizer(configuration *Config, resolver resolver) *tokenizer {
 	return &tokenizer{
-		config:  configuration,
-		reader:  bytes.NewReader(nil),
-		resolve: resolve,
+		config:   configuration,
+		reader:   bytes.NewReader(nil),
+		resolver: resolver,
 	}
 }
 
@@ -298,7 +298,7 @@ func (t *tokenizer) scan() (token, *symval, error) {
 			t.stack.pushIfEmpty(tsString)
 			symbol := t.symBuf.String()
 			t.symBuf.Reset()
-			symval, err := t.resolve(symbol)
+			symval, err := t.resolver.get(symbol)
 			if symval == nil || !symval.resolved {
 				t.resolved = false // toggle!
 			}

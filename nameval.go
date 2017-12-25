@@ -12,7 +12,7 @@ type nameValParser struct {
 
 // newNameValParser returns a new name-value parser
 func newNameValParser(p *Parser, input []byte) nameValParser {
-	tkz := newTokenizer(p.config, func(sym string) (*symval, error) { return p.symbols.get(sym) })
+	tkz := newTokenizer(p.config, &p.symbols)
 	tkz.Reset(input)
 	return nameValParser{t: *tkz}
 }

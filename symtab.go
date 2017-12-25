@@ -4,6 +4,10 @@ import (
 	"fmt"
 )
 
+type resolver interface {
+	get(string) (*symval, error)
+}
+
 type cycleError struct {
 	s string
 }
@@ -79,7 +83,7 @@ func (t *symtab) get(symbol string) (value *symval, err error) {
 	}
 
 	// not resolved, scan recursively the *quoted* value
-	tkz := newTokenizer(t.config, func(s string) (*symval, error) { return t.get(s) })
+	tkz := newTokenizer(t.config, t)
 	quoted := string(t.config.GetSpecial(SpecOpenQuote)) +
 		sv.s + string(t.config.GetSpecial(SpecCloseQuote))
 	tkz.Reset([]byte(quoted))

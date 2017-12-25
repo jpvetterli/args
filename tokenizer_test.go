@@ -7,8 +7,11 @@ import (
 	"testing"
 )
 
+type testResolver struct {
+}
+
 // NOTE: cannot test unresolved values at this level
-var resolver = func(symbol string) (*symval, error) {
+func (tr *testResolver) get(symbol string) (*symval, error) {
 	if symbol == "ERROR" {
 		return nil, fmt.Errorf("(simulated error)")
 	}
@@ -17,6 +20,8 @@ var resolver = func(symbol string) (*symval, error) {
 	}
 	return nil, nil
 }
+
+var symResolver = &testResolver{}
 
 var tokTestData = []struct {
 	input  string
@@ -116,7 +121,7 @@ var tokTestData = []struct {
 }
 
 func TestTokenizerOnGenericData(t *testing.T) {
-	tkz := newTokenizer(NewConfig(), resolver)
+	tkz := newTokenizer(NewConfig(), symResolver)
 	for _, data := range tokTestData {
 		tkz.Reset([]byte(data.input))
 		for i, exp := range data.expect {
@@ -135,7 +140,7 @@ func TestTokenizerOnGenericData(t *testing.T) {
 }
 
 func TestTokenizer(t *testing.T) {
-	tokenizer := newTokenizer(NewConfig(), resolver)
+	tokenizer := newTokenizer(NewConfig(), symResolver)
 	// no reset() so must get tokEnd
 	tok, s, err := tokenizer.Next()
 	if err != nil {
@@ -147,7 +152,7 @@ func TestTokenizer(t *testing.T) {
 }
 
 func TestTokenizerCallAfterError(t *testing.T) {
-	tkz := newTokenizer(NewConfig(), resolver)
+	tkz := newTokenizer(NewConfig(), symResolver)
 	tkz.Reset([]byte("]foo"))
 	tkz.expectError("]foo", 0, `at "]": premature ']'`, t)
 	defer panicHandler("Next() called after an error", t)
