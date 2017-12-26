@@ -3,7 +3,10 @@
 ### Unreleased
 
 * Version 1.0.0
-* Internal code reorganization (files renamed or deleted).
+
+### v0.6.1 (2017-12-26)
+
+* Rename most files and move around some functions and methods.
 
 ### v0.6.0 (2017-12-26)
 
