@@ -81,3 +81,48 @@ func typescan(value string, target interface{}) error {
 	}
 	return err
 }
+
+// reflLen returns length of array or slice or -1 using reflection
+func reflLen(target interface{}) int {
+	v := reflect.Indirect(reflect.ValueOf(target))
+	switch v.Kind() {
+	case reflect.Array, reflect.Slice:
+		return v.Len()
+	}
+	return -1
+}
+
+// reflValue returns the value of target using reflection
+func reflValue(target interface{}) reflect.Value {
+	return reflect.Indirect(reflect.ValueOf(target))
+}
+
+// reflCopy returns a new copy of target using reflection
+func reflCopy(target interface{}) interface{} {
+	return reflect.New(reflect.TypeOf(target).Elem()).Interface()
+}
+
+// reflElementAddr returns the address of the i-th element of target using
+// reflection
+func reflElementAddr(i int, v reflect.Value) interface{} {
+	return v.Index(i).Addr().Interface()
+}
+
+// reflElement returns the i-th element of target using reflection
+func reflElement(i int, v reflect.Value) interface{} {
+	return v.Index(i).Interface()
+}
+
+// reflTakesBool returns true if the target takes a bool.
+// It can be a simple variable, an array or a slice.
+func reflTakesBool(target interface{}) bool {
+	val := reflValue(target)
+	switch val.Kind() {
+	case reflect.Bool:
+		return true
+	case reflect.Array, reflect.Slice:
+		return val.Type().Elem().Kind() == reflect.Bool
+	default:
+		return false
+	}
+}
