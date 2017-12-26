@@ -91,8 +91,8 @@ func (s *stack) pop() scanState {
 	return (*s)[l-1]
 }
 
-// Reset makes the tokenizer ready to process a new input.
-func (t *tokenizer) Reset(input []byte) {
+// reset makes the tokenizer ready to process a new input.
+func (t *tokenizer) reset(input []byte) {
 	t.input = input
 	t.reader.Reset(input)
 	t.stringBuf.Reset()
@@ -101,13 +101,13 @@ func (t *tokenizer) Reset(input []byte) {
 	t.stack = t.stack[:0]
 }
 
-// Next finds the next token in the input. It returns a token, a *symval and an
+// next finds the next token in the input. It returns a token, a *symval and an
 // error. If and only if the token is tokenError, error is not nil. If and only
 // if the token is tokenString, the symval is not nil
-func (t *tokenizer) Next() (scanToken, *symval, error) {
+func (t *tokenizer) next() (scanToken, *symval, error) {
 	if len(t.stack) != 0 {
 		if t.stack.top() == tsError {
-			panic(fmt.Errorf("Next() called after an error, context: %s", string(t.ErrorContext())))
+			panic(fmt.Errorf("Next() called after an error, context: %s", string(t.errorContext())))
 		} else {
 			panic(fmt.Errorf("Next() called on non-empty stack (size=%d stack=%v)", len(t.stack), t.stack))
 		}
@@ -122,9 +122,9 @@ func (t *tokenizer) Next() (scanToken, *symval, error) {
 	}
 }
 
-// ErrorContext return a piece of input preceding the position where an error
+// errorContext return a piece of input preceding the position where an error
 // was detected.
-func (t *tokenizer) ErrorContext() []byte {
+func (t *tokenizer) errorContext() []byte {
 	n := nextPos(t.reader)
 	if n > errorContextLength {
 		return append([]byte("..."), t.input[n-errorContextLength:n]...)
@@ -134,17 +134,17 @@ func (t *tokenizer) ErrorContext() []byte {
 
 func (t *tokenizer) symbolCharacterError(c rune) (scanToken, *symval, error) {
 	t.stack.push(tsError)
-	return tokenError, nil, fmt.Errorf(`at "%s": character invalid in symbol: '%c'`, t.ErrorContext(), c)
+	return tokenError, nil, fmt.Errorf(`at "%s": character invalid in symbol: '%c'`, t.errorContext(), c)
 }
 
 func (t *tokenizer) genericError(msg string) (scanToken, *symval, error) {
 	t.stack.push(tsError)
-	return tokenError, nil, fmt.Errorf(`at "%s": %s`, t.ErrorContext(), msg)
+	return tokenError, nil, fmt.Errorf(`at "%s": %s`, t.errorContext(), msg)
 }
 
 func (t *tokenizer) invalidCharacterError(msg string) (scanToken, *symval, error) {
 	t.stack.push(tsError)
-	return tokenError, nil, fmt.Errorf(`at "%s%c": %s`, t.ErrorContext(), utf8.RuneError, msg)
+	return tokenError, nil, fmt.Errorf(`at "%s%c": %s`, t.errorContext(), utf8.RuneError, msg)
 }
 
 func (t *tokenizer) panic(r rune) {

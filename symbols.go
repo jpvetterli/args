@@ -86,8 +86,8 @@ func (t *symtab) get(symbol string) (value *symval, err error) {
 	tkz := newTokenizer(t.config, t)
 	quoted := string(t.config.GetSpecial(SpecOpenQuote)) +
 		sv.s + string(t.config.GetSpecial(SpecCloseQuote))
-	tkz.Reset([]byte(quoted))
-	token, sv1, err := tkz.Next()
+	tkz.reset([]byte(quoted))
+	token, sv1, err := tkz.next()
 
 	if err != nil {
 		return nil, err

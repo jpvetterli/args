@@ -497,7 +497,7 @@ type nameValParser struct {
 // newNameValParser returns a new name-value parser
 func newNameValParser(p *Parser, input []byte) nameValParser {
 	tkz := newTokenizer(p.config, &p.symbols)
-	tkz.Reset(input)
+	tkz.reset(input)
 	return nameValParser{t: *tkz}
 }
 
@@ -509,7 +509,7 @@ func (nvp *nameValParser) next() (*symval, *symval, error) {
 	var name *symval
 
 	if nvp.name == nil {
-		token, s, err := nvp.t.Next()
+		token, s, err := nvp.t.next()
 		if token == tokenError {
 			return nil, nil, err
 		}
@@ -518,7 +518,7 @@ func (nvp *nameValParser) next() (*symval, *symval, error) {
 		case tokenEnd:
 			return nil, nil, nil
 		case tokenEqual:
-			return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.ErrorContext(), nvp.t.config.GetSpecial(SpecSeparator))
+			return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.errorContext(), nvp.t.config.GetSpecial(SpecSeparator))
 		case tokenString:
 			name = s
 		}
@@ -527,7 +527,7 @@ func (nvp *nameValParser) next() (*symval, *symval, error) {
 	}
 
 	// got a name so far, if next token is a string, it's in fact a standalone value
-	token, s, err := nvp.t.Next()
+	token, s, err := nvp.t.next()
 	if token == tokenError {
 		return nil, nil, decorate(err, name.s)
 	}
@@ -546,15 +546,15 @@ func (nvp *nameValParser) next() (*symval, *symval, error) {
 
 	// after name and separator, expect value (string)
 
-	token, s, err = nvp.t.Next()
+	token, s, err = nvp.t.next()
 	if token == tokenError {
 		return nil, nil, decorate(err, name.s)
 	}
 	switch token {
 	case tokenEnd:
-		return nil, nil, fmt.Errorf(`at "%s": premature end of input`, nvp.t.ErrorContext())
+		return nil, nil, fmt.Errorf(`at "%s": premature end of input`, nvp.t.errorContext())
 	case tokenEqual:
-		return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.ErrorContext(), nvp.t.config.GetSpecial(SpecSeparator))
+		return nil, nil, fmt.Errorf(`at "%s": "%c" unexpected`, nvp.t.errorContext(), nvp.t.config.GetSpecial(SpecSeparator))
 	case tokenString:
 		return name, s, nil
 	}

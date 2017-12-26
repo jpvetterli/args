@@ -132,7 +132,7 @@ var tokTestData = []struct {
 func TestTokenizerOnGenericData(t *testing.T) {
 	tkz := newTokenizer(NewConfig(), symResolver)
 	for _, data := range tokTestData {
-		tkz.Reset([]byte(data.input))
+		tkz.reset([]byte(data.input))
 		for i, exp := range data.expect {
 			switch exp.(type) {
 			case string:
@@ -151,7 +151,7 @@ func TestTokenizerOnGenericData(t *testing.T) {
 func TestTokenizer(t *testing.T) {
 	tokenizer := newTokenizer(NewConfig(), symResolver)
 	// no reset() so must get tokEnd
-	tok, s, err := tokenizer.Next()
+	tok, s, err := tokenizer.next()
 	if err != nil {
 		t.Errorf("error!")
 	}
@@ -162,14 +162,14 @@ func TestTokenizer(t *testing.T) {
 
 func TestTokenizerCallAfterError(t *testing.T) {
 	tkz := newTokenizer(NewConfig(), symResolver)
-	tkz.Reset([]byte("]foo"))
+	tkz.reset([]byte("]foo"))
 	tkz.expectError("]foo", 0, `at "]": premature ']'`, t)
 	defer panicHandler("Next() called after an error, context: ]", t)
 	tkz.expectString("]foo", 1, "foo", t)
 }
 
 func (tkz *tokenizer) expectError(input string, pos int, expectedMsg string, t *testing.T) {
-	tok, _, err := tkz.Next()
+	tok, _, err := tkz.next()
 	if err == nil || tok != tokenError {
 		t.Errorf("E \"%s\"[%d]: error is nil or wrong token: %v (expected: %v)", input, pos, tok, tokenNone)
 		return
@@ -181,7 +181,7 @@ func (tkz *tokenizer) expectError(input string, pos int, expectedMsg string, t *
 }
 
 func (tkz *tokenizer) expectToken(input string, pos int, expectedToken scanToken, t *testing.T) {
-	tok, s, err := tkz.Next()
+	tok, s, err := tkz.next()
 	if err != nil {
 		t.Errorf("T \"%s\"[%d]: unexpected error: %s", input, pos, err.Error())
 		return
@@ -195,7 +195,7 @@ func (tkz *tokenizer) expectToken(input string, pos int, expectedToken scanToken
 }
 
 func (tkz *tokenizer) expectString(input string, pos int, expectedString string, t *testing.T) {
-	tok, s, err := tkz.Next()
+	tok, s, err := tkz.next()
 	if err != nil {
 		t.Errorf("S \"%s\"[%d]: unexpected error: %s", input, pos, err.Error())
 		return

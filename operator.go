@@ -106,7 +106,7 @@ func (o *dumpOperator) handle(value string) error {
 		fmt.Fprintln(os.Stderr, comment)
 	}
 	for _, n := range names {
-		if s, ok := symbol(n, o.parser); ok {
+		if s, isSymbol := symbol(n, o.parser); isSymbol {
 			if v, ok := o.parser.symbols.table[s]; ok {
 				r := 'U'
 				if v.resolved {
