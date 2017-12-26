@@ -216,6 +216,10 @@ func (o *includeOperator) handle(value string) error {
 		if e != nil {
 			return fmt.Errorf("include: %v", e)
 		}
+		// remove byte order mark if any
+		if data[0] == 0xef && data[1] == 0xbb || data[2] == 0xbf {
+			data = data[3:]
+		}
 		return o.parser.ParseBytes(data)
 	}
 

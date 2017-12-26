@@ -4,6 +4,10 @@
 
 * Version 1.0.0
 
+### v0.6.2 (2017-12-26)
+
+* Handle byte order mark gracefully when including files.
+
 ### v0.6.1 (2017-12-26)
 
 * Rename most files and move around some functions and methods.

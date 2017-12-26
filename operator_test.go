@@ -103,6 +103,24 @@ func TestOperatorInclude(t *testing.T) {
 	}
 
 }
+func TestOperatorIncludeBOM(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("include=[testdata/include-BOM.test]"),
+		func() error {
+			if foo != "value of foo" || bar != "value of bar" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+}
 
 func TestOperatorIncludeNoAccess(t *testing.T) {
 	a := getParser()
@@ -256,6 +274,25 @@ func TestOperatorIncludeKeys5(t *testing.T) {
 	}
 }
 
+func TestOperatorIncludeKeys5BOM(t *testing.T) {
+	a := getParser()
+	usr := ""
+	pw := ""
+	a.Def("usr", &usr)
+	a.Def("pw", &pw)
+	input := `include=[testdata/foreign2-BOM.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$[PASS] dump=[usr $PASS]`
+	expected := "usr u649\n$PASS R !=.sesam568\n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
+	}
+	if usr != "u649" || pw != "!=.sesam568" {
+		t.Errorf(`unexpected results: foo="%s" bar="%s"`, usr, pw)
+	}
+}
 func TestOperatorReset(t *testing.T) {
 	a := getParser()
 	var x uint8
