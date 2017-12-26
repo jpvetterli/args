@@ -5,6 +5,14 @@
 * Version 1.0.0
 * Internal code reorganization (files renamed or deleted).
 
+### v0.6.0 (2017-12-26)
+
+* Require symbol prefix to be always escaped when followed by special character.
+  This change is INCOMPATIBLE from the point of view of users.
+* Documentation fixes.
+* More tests.
+* Refactoring.
+
 ### v0.5.0 (2017-12-24)
 
 The input syntax for symbol references has been modified. A symbol reference is
