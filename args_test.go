@@ -229,6 +229,48 @@ func TestArgsTypesSingleValue(t *testing.T) {
 	}
 }
 
+func TestArgsExoticCharacters(t *testing.T) {
+	c := args.NewConfig()
+	c.SetSpecial(args.SpecSymbolPrefix, '✓') // \u2713
+	c.SetSpecial(args.SpecOpenQuote, '«')
+	c.SetSpecial(args.SpecCloseQuote, '»')
+	a := args.CustomParser(c)
+	var x string
+	a.Def("日本語", &x)
+	if err := matchResult(
+		a.Parse("日本語= «b c⌘»"),
+		func() error {
+			if x != "b c⌘" {
+				return fmt.Errorf(`x not "b c⌘"", but %s`, x)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+	if err := matchResult(
+		a.Parse("✓SYM=«b c⌘» 日本語= ✓«SYM»"),
+		func() error {
+			if x != "b c⌘" {
+				return fmt.Errorf(`x not "b c⌘"", but %s`, x)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestArgsEscapeSymbol(t *testing.T) {
+	a := args.NewParser()
+	var x string
+	a.Def("foo", &x)
+	if err := matchErrorMessage(
+		a.Parse("foo= [b$ c]"),
+		`Parse error on foo: at "foo= [b$ ": character invalid in symbol: ' '`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestArgsTypesSingleEmptyValue(t *testing.T) {
 	a := getParser()
 	empty := ""

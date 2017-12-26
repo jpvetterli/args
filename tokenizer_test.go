@@ -101,23 +101,32 @@ var tokTestData = []struct {
 
 	{`$[ERROR]`, []interface{}{errors.New(`at "$[ERROR]": error resolving "ERROR": (simulated error)`)}},
 
-	{`$a`, []interface{}{`$a`}},
-	{`$$`, []interface{}{`$$`}},
-	{`$\.`, []interface{}{`$\.`}},
-	{`$\a`, []interface{}{`$\a`}},
-	{`$\[`, []interface{}{`$[`}},
-	{`$\]`, []interface{}{`$]`}},
+	{`\$a`, []interface{}{`$a`}},
+	{`\$\$`, []interface{}{`$$`}},
+	{`\$\.`, []interface{}{`$\.`}},
+	{`\$\a`, []interface{}{`$\a`}},
+	{`\$\[`, []interface{}{`$[`}},
+	{`\$\]`, []interface{}{`$]`}},
 	{` x `, []interface{}{`x`}},
-	{` $ `, []interface{}{`$`}},
-	{` $=`, []interface{}{`$`, tokenEqual}},
+	{` \$ `, []interface{}{`$`}},
+	{` \$=`, []interface{}{`$`, tokenEqual}},
 
-	{`foo=$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=$]": premature ']'`)}},
-	{`foo=$[bar$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=$[bar$": character invalid in symbol: '$'`)}},
-	{`foo=[bar$]`, []interface{}{`foo`, tokenEqual, "bar$"}},
-	{`foo=x[bar$]y`, []interface{}{`foo`, tokenEqual, "xbar$y"}},
-	{`foo=[ [bar$] ]`, []interface{}{`foo`, tokenEqual, " [bar$] "}},
+	{`$$`, []interface{}{errors.New(`at "$$": character invalid in symbol: '$'`)}},
+	{`$\.`, []interface{}{errors.New(`at "$\": character invalid in symbol: '\'`)}},
+	{`$\a`, []interface{}{errors.New(`at "$\": character invalid in symbol: '\'`)}},
+	{`$\[`, []interface{}{errors.New(`at "$\": character invalid in symbol: '\'`)}},
+	{`$]`, []interface{}{errors.New(`at "$]": character invalid in symbol: ']'`)}},
+	{` $ `, []interface{}{errors.New(`at " $ ": character invalid in symbol: ' '`)}},
+	{` $=`, []interface{}{errors.New(`at " $=": character invalid in symbol: '='`)}},
+
+	{`foo=\$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=\$]": premature ']'`)}},
+	{`foo=$[bar\$]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo=$[bar\": character invalid in symbol: '\'`)}},
+	{`foo=[bar\$]`, []interface{}{`foo`, tokenEqual, "bar$"}},
+	{`foo=x[bar\$]y`, []interface{}{`foo`, tokenEqual, "xbar$y"}},
+	{`foo=[ [bar\$] ]`, []interface{}{`foo`, tokenEqual, " [bar$] "}},
 
 	{`\$[ a \]b] = x`, []interface{}{`$ a ]b`, tokenEqual, "x"}},
+	{`foo= [b$ c]`, []interface{}{`foo`, tokenEqual, errors.New(`at "foo= [b$ ": character invalid in symbol: ' '`)}},
 }
 
 func TestTokenizerOnGenericData(t *testing.T) {
@@ -155,7 +164,7 @@ func TestTokenizerCallAfterError(t *testing.T) {
 	tkz := newTokenizer(NewConfig(), symResolver)
 	tkz.Reset([]byte("]foo"))
 	tkz.expectError("]foo", 0, `at "]": premature ']'`, t)
-	defer panicHandler("Next() called after an error", t)
+	defer panicHandler("Next() called after an error, context: ]", t)
 	tkz.expectString("]foo", 1, "foo", t)
 }
 
