@@ -107,7 +107,7 @@ func (t *tokenizer) Reset(input []byte) {
 func (t *tokenizer) Next() (token, *symval, error) {
 	if len(t.stack) != 0 {
 		if t.stack.top() == tsError {
-			panic(fmt.Errorf("Next() called after an error"))
+			panic(fmt.Errorf("Next() called after an error, context: %s", string(t.ErrorContext())))
 		} else {
 			panic(fmt.Errorf("Next() called on non-empty stack (size=%d stack=%v)", len(t.stack), t.stack))
 		}
@@ -184,13 +184,10 @@ func (t *tokenizer) scan() (token, *symval, error) {
 		switch t.stack.top() {
 		case tsInit:
 			return tokenEnd, nil, nil
-		case tsPrefix:
-			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
-			fallthrough
 		case tsString:
 			t.stack.pop()
 			return tokenString, t.symval(), nil
-		case tsBracket, tsSymbol, tsEscape:
+		case tsBracket, tsSymbol, tsPrefix, tsEscape:
 			return t.genericError("premature end of input")
 		case tsEnd:
 			t.stack.pop()
@@ -202,15 +199,12 @@ func (t *tokenizer) scan() (token, *symval, error) {
 	case unicode.IsSpace(r):
 		switch t.stack.top() {
 		case tsInit:
-		case tsPrefix:
-			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
-			fallthrough
 		case tsString:
 			t.stack.pop()
 			return tokenString, t.symval(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
-		case tsSymbol:
+		case tsSymbol, tsPrefix:
 			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
@@ -224,16 +218,13 @@ func (t *tokenizer) scan() (token, *symval, error) {
 		switch t.stack.top() {
 		case tsInit:
 			return tokenEqual, nil, nil
-		case tsPrefix:
-			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
-			fallthrough
 		case tsString:
 			t.reader.UnreadRune()
 			t.stack.pop()
 			return tokenString, t.symval(), nil
 		case tsBracket:
 			t.stringBuf.WriteRune(r)
-		case tsSymbol:
+		case tsSymbol, tsPrefix:
 			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
@@ -245,13 +236,9 @@ func (t *tokenizer) scan() (token, *symval, error) {
 
 	case r == t.config.GetSpecial(SpecEscape):
 		switch t.stack.top() {
-		case tsPrefix:
-			t.stack.pop()
-			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
-			fallthrough
 		case tsInit, tsString, tsBracket:
 			t.stack.push(tsEscape)
-		case tsSymbol:
+		case tsSymbol, tsPrefix:
 			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
@@ -318,9 +305,7 @@ func (t *tokenizer) scan() (token, *symval, error) {
 				t.stringBuf.WriteRune(t.config.GetSpecial(SpecCloseQuote))
 			}
 		case tsPrefix:
-			t.reader.UnreadRune()
-			t.stack.pop()
-			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
+			return t.symbolCharacterError(r)
 		case tsEscape:
 			t.stack.pop()
 			t.stack.pushIfEmpty(tsString)
@@ -335,10 +320,8 @@ func (t *tokenizer) scan() (token, *symval, error) {
 			t.stack.push(tsPrefix)
 		case tsBracket:
 			t.stack.push(tsPrefix)
-		case tsSymbol:
+		case tsSymbol, tsPrefix:
 			return t.symbolCharacterError(r)
-		case tsPrefix:
-			t.stringBuf.WriteRune(r) // write the previous one to the current string
 		case tsEscape:
 			t.stack.pop()
 			t.stack.pushIfEmpty(tsString)
@@ -363,6 +346,7 @@ func (t *tokenizer) scan() (token, *symval, error) {
 				return t.symbolCharacterError(r)
 			}
 		case tsPrefix:
+			// NOTE: symbol definition
 			t.stack.pop()
 			t.stack.pushIfEmpty(tsString)
 			t.stringBuf.WriteRune(t.config.GetSpecial(SpecSymbolPrefix))
