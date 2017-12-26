@@ -244,8 +244,8 @@ and produce the output:
   slic [1 0.5 42]
   ? xyzzy
   $GOPATH R /home/user42/go
-  $PATH R locked
   ? $GOBBLEDYGOOK
+  $PATH R locked
   ? $XYZZY
 
 The reset operator
@@ -274,7 +274,7 @@ prefix). The value is inserted into the symbol table unless there is already an
 entry for the symbol ("first wins" principle). If the environment variable does
 not exist, nothing is done. For example, the specification:
 
-  import=[$HOME $NONESUCH] $$HOME dump=[$HOME $NONESUCH []]
+  import=[$HOME $NONESUCH] $[HOME] dump=[$HOME $NONESUCH []]
 
 produces the output:
 
