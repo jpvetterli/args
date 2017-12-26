@@ -36,10 +36,10 @@ func newTokenizer(configuration *Config, resolver resolver) *tokenizer {
 
 var errorContextLength = 15
 
-type token uint8
+type scanToken uint8
 
 const (
-	tokenNone token = iota
+	tokenNone scanToken = iota
 	tokenEnd
 	tokenEqual
 	tokenString
@@ -104,7 +104,7 @@ func (t *tokenizer) Reset(input []byte) {
 // Next finds the next token in the input. It returns a token, a *symval and an
 // error. If and only if the token is tokenError, error is not nil. If and only
 // if the token is tokenString, the symval is not nil
-func (t *tokenizer) Next() (token, *symval, error) {
+func (t *tokenizer) Next() (scanToken, *symval, error) {
 	if len(t.stack) != 0 {
 		if t.stack.top() == tsError {
 			panic(fmt.Errorf("Next() called after an error, context: %s", string(t.ErrorContext())))
@@ -132,17 +132,17 @@ func (t *tokenizer) ErrorContext() []byte {
 	return t.input[:n]
 }
 
-func (t *tokenizer) symbolCharacterError(c rune) (token, *symval, error) {
+func (t *tokenizer) symbolCharacterError(c rune) (scanToken, *symval, error) {
 	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s": character invalid in symbol: '%c'`, t.ErrorContext(), c)
 }
 
-func (t *tokenizer) genericError(msg string) (token, *symval, error) {
+func (t *tokenizer) genericError(msg string) (scanToken, *symval, error) {
 	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s": %s`, t.ErrorContext(), msg)
 }
 
-func (t *tokenizer) invalidCharacterError(msg string) (token, *symval, error) {
+func (t *tokenizer) invalidCharacterError(msg string) (scanToken, *symval, error) {
 	t.stack.push(tsError)
 	return tokenError, nil, fmt.Errorf(`at "%s%c": %s`, t.ErrorContext(), utf8.RuneError, msg)
 }
@@ -155,7 +155,7 @@ func nextPos(r *bytes.Reader) int {
 	return int(r.Size()) - r.Len()
 }
 
-func (t *tokenizer) scan() (token, *symval, error) {
+func (t *tokenizer) scan() (scanToken, *symval, error) {
 
 	r, _, err := t.reader.ReadRune()
 	// byte order mark (\ufeff) not supported --

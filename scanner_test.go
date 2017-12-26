@@ -137,8 +137,8 @@ func TestTokenizerOnGenericData(t *testing.T) {
 			switch exp.(type) {
 			case string:
 				tkz.expectString(data.input, i, exp.(string), t)
-			case token:
-				tkz.expectToken(data.input, i, exp.(token), t)
+			case scanToken:
+				tkz.expectToken(data.input, i, exp.(scanToken), t)
 			case error:
 				tkz.expectError(data.input, i, exp.(error).Error(), t)
 			default:
@@ -180,7 +180,7 @@ func (tkz *tokenizer) expectError(input string, pos int, expectedMsg string, t *
 	}
 }
 
-func (tkz *tokenizer) expectToken(input string, pos int, expectedToken token, t *testing.T) {
+func (tkz *tokenizer) expectToken(input string, pos int, expectedToken scanToken, t *testing.T) {
 	tok, s, err := tkz.Next()
 	if err != nil {
 		t.Errorf("T \"%s\"[%d]: unexpected error: %s", input, pos, err.Error())
