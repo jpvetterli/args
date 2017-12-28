@@ -231,7 +231,7 @@ func (o *includeOperator) handle(value string) error {
 
 	re, err := regexp.Compile(extractor)
 	if err != nil {
-		panic(fmt.Errorf(`compilation of extractor "%s" failed: %v`, extractor, err))
+		return fmt.Errorf(`compilation of extractor "%s" failed: %v`, extractor, err)
 	}
 
 	kvmap := make(map[string]string)
