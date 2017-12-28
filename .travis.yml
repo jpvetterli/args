@@ -1,9 +1,8 @@
 language: go
 
 go:
-  - 1.9
-  - master
+  - 1.9.x
 
 script:
-  - go test -v ./...
+  - go test ./...
   - go vet ./...

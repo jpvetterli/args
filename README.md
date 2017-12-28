@@ -3,6 +3,7 @@
 Define and parse command line arguments.
 
 [![GoDoc](https://godoc.org/github.com/jpvetterli/args?status.svg)](https://godoc.org/github.com/jpvetterli/args)
+[![Build Status](https://travis-ci.org/jpvetterli/args.svg?branch=master)](https://travis-ci.org/jpvetterli/args)
 
 The package keeps simple things simple and makes complicated things possible.
 For example, this is a simple program argument:
