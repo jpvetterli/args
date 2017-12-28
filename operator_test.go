@@ -274,6 +274,24 @@ func TestOperatorIncludeKeys5(t *testing.T) {
 	}
 }
 
+func TestOperatorIncludeKeys5BADExtractor(t *testing.T) {
+	a := getParser()
+	usr := ""
+	pw := ""
+	a.Def("usr", &usr)
+	a.Def("pw", &pw)
+	input := `include=[testdata/foreign2.test extractor=[***] keys=[user=usr password=$PASS]] pw=$[PASS] dump=[usr $PASS]`
+	expected := "compilation of extractor \"***\" failed: error parsing regexp: missing argument to repetition operator: `*`"
+	err := a.Parse(input)
+	if err == nil {
+		t.Errorf("error missing")
+	} else {
+		if err.Error() != expected {
+			t.Errorf(`unexpected error: "%v", expected: "%s"`, err, expected)
+		}
+	}
+}
+
 func TestOperatorIncludeKeys5BOM(t *testing.T) {
 	a := getParser()
 	usr := ""
@@ -293,6 +311,7 @@ func TestOperatorIncludeKeys5BOM(t *testing.T) {
 		t.Errorf(`unexpected results: foo="%s" bar="%s"`, usr, pw)
 	}
 }
+
 func TestOperatorReset(t *testing.T) {
 	a := getParser()
 	var x uint8
@@ -361,5 +380,47 @@ func TestOperatorDumpWithCondRenamed(t *testing.T) {
 	}
 	if output != expected {
 		t.Errorf("unexpected output of dump: %s", output)
+	}
+}
+
+func TestOperatorDumpWithNoEmpty(t *testing.T) {
+	a := args.NewParser()
+	input := "dump=[[]]"
+	expected := "? []\n"
+	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	if err != nil {
+		t.Errorf("unexpected error: " + err.Error())
+	}
+	if output != expected {
+		t.Errorf("unexpected output of dump: %s", output)
+	}
+}
+
+func TestOperatorImport(t *testing.T) {
+	a := args.NewParser()
+	err := a.Parse("import=foo")
+	expected := `import: "foo": symbol prefix missing ($)`
+	if err == nil {
+		t.Errorf("error missing")
+	} else {
+		if err.Error() != expected {
+			t.Errorf("unexpected error: " + err.Error())
+		}
+	}
+}
+
+func TestOperatorMacro(t *testing.T) {
+	a := args.NewParser()
+	if err := matchErrorMessage(
+		a.Parse("macro=x"),
+		`macro: "x": symbol prefix missing ($)`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+	if err := matchErrorMessage(
+		a.Parse("macro=$x"),
+		`macro: symbol "$x" undefined`,
+	); err != nil {
+		t.Error(err.Error())
 	}
 }

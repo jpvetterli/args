@@ -79,6 +79,15 @@ func expect(chars [5]rune, c *args.Config, t *testing.T) {
 	test()
 }
 
+func TestOpName(t *testing.T) {
+	c := args.NewConfig()
+	name := "zurücksetzen"
+	c.SetOpName(args.OpReset, name)
+	if c.GetOpName(args.OpReset) != name {
+		t.Errorf("unexpected name: %s", c.GetOpName(args.OpReset))
+	}
+}
+
 // test config panics
 
 func TestConfigPanic1(t *testing.T) {
@@ -113,4 +122,10 @@ func TestConfigPanic4(t *testing.T) {
 	c := args.NewConfig()
 	c.SetOpName(args.OpImport, "FOO")
 	c.SetOpName(args.OpCond, "FOO")
+}
+
+func TestConfigPanic5(t *testing.T) {
+	defer panicHandler(`cannot use '$' as escape: already used`, t)
+	c := args.NewConfig()
+	c.SetSpecial(args.SpecEscape, '$')
 }
