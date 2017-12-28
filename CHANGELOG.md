@@ -4,6 +4,13 @@
 
 * Version 1.0.0
 
+### v0.6.3 (2017-12-28)
+
+* Return error instead of panicking on invalid extractor regular expression in
+  include operator.
+* Add some more tests.
+* Use travis-ci.org and coveralls.io to report build and coverage status.
+
 ### v0.6.2 (2017-12-26)
 
 * Handle byte order mark gracefully when including files.
