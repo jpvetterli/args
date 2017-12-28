@@ -4,7 +4,7 @@ Define and parse command line arguments.
 
 [![GoDoc](https://godoc.org/github.com/jpvetterli/args?status.svg)](https://godoc.org/github.com/jpvetterli/args)
 [![Build Status](https://travis-ci.org/jpvetterli/args.svg?branch=master)](https://travis-ci.org/jpvetterli/args)
-[![Coverage Status](https://coveralls.io/repos/github/jpvetterli/args/badge.svg?branch=master)](https://coveralls.io/github/jpvetterli/args?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/jpvetterli/args/badge.svg?branch=v0.6.3)](https://coveralls.io/github/jpvetterli/args?branch=v0.6.3)
 
 The package keeps simple things simple and makes complicated things possible.
 For example, this is a simple program argument:
