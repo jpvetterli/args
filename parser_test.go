@@ -608,7 +608,7 @@ func TestArgsTimeScanner(t *testing.T) {
 	defx := a.Def("x", &x)
 	if err := matchErrorMessage(
 		a.Parse("x= 1000"),
-		`Parse error on x: target for value "1000" has unsupported type time.Time`,
+		`Parse error on x: type time.Time requested for value "1000" is not supported`,
 	); err != nil {
 		t.Error(err.Error())
 	}
@@ -1149,6 +1149,56 @@ func TestSubsMacro1(t *testing.T) {
 	if arg1 != "a" || arg2 != "b" {
 		t.Errorf(`nested parsing: "%s, %s", instead of "a, b"`, arg1, arg2)
 	}
+}
+
+func TestTargetMap(t *testing.T) {
+	a := getParser()
+	m := make(map[string]int)
+	a.Def("MAP", &m)
+
+	if err := matchResult(
+		a.Parse("MAP = [foo = 1 bar = 2]"),
+		func() error {
+			if len(m) != 2 || m["foo"] != 1 || m["bar"] != 2 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := matchErrorMessage(
+		a.Parse("MAP = [foo = a bar = 2]"),
+		`Parse error on MAP: value for key "foo" cannot be converted: strconv.ParseInt: parsing "a": invalid syntax`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+
+}
+
+func TestTargetMapAnoynmous(t *testing.T) {
+	a := getParser()
+	m := make(map[string]int)
+	a.Def("", &m)
+
+	if err := matchResult(
+		a.Parse("[foo = 1 bar = 2]"),
+		func() error {
+			if len(m) != 2 || m["foo"] != 1 || m["bar"] != 2 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := matchErrorMessage(
+		a.Parse("[foo = a bar = 2]"),
+		`Parse error on anonymous parameter: value for key "foo" cannot be converted: strconv.ParseInt: parsing "a": invalid syntax`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+
 }
 
 // panicHandler triggers a testing error if panic message differs from expected

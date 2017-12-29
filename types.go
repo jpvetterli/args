@@ -6,80 +6,88 @@ import (
 	"strconv"
 )
 
-// typescan converts the value to the type pointed to by the target. The target must
-// be a pointer to one of the basic types supported by Parse* functions in the
-// strconv package.
-func typescan(value string, target interface{}) error {
+// convertValue converts value to the type at target and assigns the converted
+// value to the variable at target.
+func convertValue(value string, target interface{}) error {
 	if reflect.ValueOf(target).Kind() != reflect.Ptr {
 		return fmt.Errorf(`target for value "%s" is not a pointer`, value)
 	}
-	var (
-		b   bool
-		i   int64
-		u   uint64
-		f   float64
-		err error
-	)
 	v := reflValue(target)
-	switch v.Kind() {
-	case reflect.String:
-		v.SetString(value)
-	case reflect.Bool:
-		if b, err = strconv.ParseBool(value); err == nil {
-			v.SetBool(b)
-		}
-	case reflect.Int:
-		if i, err = strconv.ParseInt(value, 0, 0); err == nil {
-			v.SetInt(i)
-		}
-	case reflect.Int8:
-		if i, err = strconv.ParseInt(value, 0, 8); err == nil {
-			v.SetInt(i)
-		}
-	case reflect.Int16:
-		if i, err = strconv.ParseInt(value, 0, 16); err == nil {
-			v.SetInt(i)
-		}
-	case reflect.Int32:
-		if i, err = strconv.ParseInt(value, 0, 32); err == nil {
-			v.SetInt(i)
-		}
-	case reflect.Int64:
-		if i, err = strconv.ParseInt(value, 0, 64); err == nil {
-			v.SetInt(i)
-		}
-	case reflect.Uint:
-		if u, err = strconv.ParseUint(value, 0, 0); err == nil {
-			v.SetUint(u)
-		}
-	case reflect.Uint8:
-		if u, err = strconv.ParseUint(value, 0, 8); err == nil {
-			v.SetUint(u)
-		}
-	case reflect.Uint16:
-		if u, err = strconv.ParseUint(value, 0, 16); err == nil {
-			v.SetUint(u)
-		}
-	case reflect.Uint32:
-		if u, err = strconv.ParseUint(value, 0, 32); err == nil {
-			v.SetUint(u)
-		}
-	case reflect.Uint64:
-		if u, err = strconv.ParseUint(value, 0, 64); err == nil {
-			v.SetUint(u)
-		}
-	case reflect.Float32:
-		if f, err = strconv.ParseFloat(value, 32); err == nil {
-			v.SetFloat(f)
-		}
-	case reflect.Float64:
-		if f, err = strconv.ParseFloat(value, 64); err == nil {
-			v.SetFloat(f)
-		}
-	default:
-		err = fmt.Errorf(`target for value "%s" has unsupported type %v`, value, v.Type())
+	parsed, err := convert(value, v.Type())
+	if err != nil {
+		return err
 	}
-	return err
+	v.Set(reflect.ValueOf(parsed))
+	return nil
+}
+
+// convertKeyValue converts key and value to the types specified and assigns the
+// converted  key and value to the map at target.
+func convertKeyValue(key, value string, keyType, valType reflect.Type, target interface{}) error {
+	if reflect.ValueOf(target).Kind() != reflect.Ptr {
+		return fmt.Errorf(`target for key "%s" and value "%s" is not a pointer`, key, value)
+	}
+	k, err := convert(key, keyType)
+	if err != nil {
+		return fmt.Errorf(`key cannot be converted: %v`, err)
+	}
+	v, err := convert(value, valType)
+	if err != nil {
+		return fmt.Errorf(`value for key "%s" cannot be converted: %v`, key, err)
+	}
+	reflValue(target).SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+	return nil
+}
+
+// convert converts value to the type of target and returns the converted value
+// as an empty interface. The type of the target must one of the basic types
+// supported by Parse* functions in the strconv package.
+func convert(value string, typ reflect.Type) (interface{}, error) {
+	var err error
+	var parsed interface{}
+	switch typ.Kind() {
+	case reflect.String:
+		parsed = value
+	case reflect.Bool:
+		parsed, err = strconv.ParseBool(value)
+	case reflect.Int:
+		parsed, err = strconv.ParseInt(value, 0, 0)
+		parsed = int(parsed.(int64))
+	case reflect.Int8:
+		parsed, err = strconv.ParseInt(value, 0, 8)
+		parsed = int8(parsed.(int64))
+	case reflect.Int16:
+		parsed, err = strconv.ParseInt(value, 0, 16)
+		parsed = int16(parsed.(int64))
+	case reflect.Int32:
+		parsed, err = strconv.ParseInt(value, 0, 32)
+		parsed = int32(parsed.(int64))
+	case reflect.Int64:
+		parsed, err = strconv.ParseInt(value, 0, 64)
+	case reflect.Uint:
+		parsed, err = strconv.ParseUint(value, 0, 0)
+		parsed = uint(parsed.(uint64))
+	case reflect.Uint8:
+		parsed, err = strconv.ParseUint(value, 0, 8)
+		parsed = uint8(parsed.(uint64))
+	case reflect.Uint16:
+		parsed, err = strconv.ParseUint(value, 0, 16)
+		parsed = uint16(parsed.(uint64))
+	case reflect.Uint32:
+		parsed, err = strconv.ParseUint(value, 0, 32)
+		parsed = uint32(parsed.(uint64))
+	case reflect.Uint64:
+		parsed, err = strconv.ParseUint(value, 0, 64)
+	case reflect.Float32:
+		parsed, err = strconv.ParseFloat(value, 32)
+		parsed = float32(parsed.(float64))
+	case reflect.Float64:
+		parsed, err = strconv.ParseFloat(value, 64)
+	default:
+		parsed = nil
+		err = fmt.Errorf(`type %v requested for value "%s" is not supported`, typ, value)
+	}
+	return parsed, err
 }
 
 // reflLen returns length of array or slice or -1 using reflection

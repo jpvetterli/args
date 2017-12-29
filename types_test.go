@@ -7,7 +7,7 @@ import (
 
 func TestBadTarget(t *testing.T) {
 	i := 42
-	err := typescan("43", i)
+	err := convertValue("43", i)
 	expected := `target for value "43" is not a pointer`
 	if err == nil {
 		t.Errorf("error missing")
@@ -34,7 +34,7 @@ func TestType(t *testing.T) {
 
 	test := func(input string, i interface{}) {
 		count++
-		err := typescan(input, i)
+		err := convertValue(input, i)
 		if err != nil {
 			t.Errorf("unexpected error in test %d: %v", count, err)
 		}
@@ -78,7 +78,7 @@ func TestTypeError(t *testing.T) {
 
 	test := func(input string, i interface{}) {
 		count++
-		err := typescan(input, i)
+		err := convertValue(input, i)
 		if err == nil {
 			t.Errorf("error missing in test %d", count)
 		}

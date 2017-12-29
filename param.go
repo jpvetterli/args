@@ -1,6 +1,7 @@
 package args
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -115,54 +116,110 @@ func (p *Param) Split(regex string) *Param {
 // parseValues converts values and assigns them to targets
 func (p *Param) parseValues(values []string) error {
 	var err error
-	count := len(values)
 	v := reflValue(p.target)
 	switch v.Kind() {
 	case reflect.Array:
-		total := count + p.count
-		if total > p.limit {
-			err = fmt.Errorf("too many values specified, expected %d", p.limit)
-		} else {
-			// scan all values
-			for i, value := range values {
-				if err = p.assign(value, reflElementAddr(p.count+i, v)); err != nil {
-					break
-				}
-			}
-			p.count = total
-		}
+		err = p.parseArrayValues(values)
 	case reflect.Slice:
-		total := count + p.count
-		switch {
-		case p.limit == 0:
-			// any number of values is okay
-		case total > p.limit:
-			err = fmt.Errorf("%d value%s specified, at most %d expected", total, plural(total), p.limit)
-		}
-		if err == nil {
-			if total > v.Len() {
-				// grow the slice
-				s := reflect.MakeSlice(v.Type(), total, total)
-				// no need to copy since no way to skip over existing values
-				// do it anyway in just in case (e.g. extract values by splitting and skipping)
-				reflect.Copy(s, v)
-				v.Set(s)
-			}
-			// scan all values
-			for i, value := range values {
-				if err = p.assign(value, reflElementAddr(p.count+i, v)); err != nil {
-					break
-				}
-			}
-			p.count = total
-		}
+		err = p.parseSliceValues(values)
+	case reflect.Map:
+		err = p.parseMapValues(values)
 	default:
-		// if too many values specified, the last wins
+		// multiple values specified: the last wins
 		err = p.assign(values[len(values)-1], p.target)
 		p.count++
 	}
 	if err != nil {
 		err = decorate(err, p.name)
+	}
+	return err
+}
+
+// parseArrayValues assigns values to an array target.
+// The target must be an Array.
+func (p *Param) parseArrayValues(values []string) error {
+	var err error
+	count := len(values)
+	total := count + p.count
+	if total > p.limit {
+		err = fmt.Errorf("too many values specified, expected %d", p.limit)
+	} else {
+		// scan all values
+		for i, value := range values {
+			if err = p.assignIndexed(value, p.count+i, p.target); err != nil {
+				break
+			}
+		}
+		p.count = total
+	}
+	return err
+}
+
+// parseSliceValues assigns values to a slice target.
+// The target must be a Slice.
+func (p *Param) parseSliceValues(values []string) error {
+	var err error
+	count := len(values)
+	total := count + p.count
+	switch {
+	case p.limit == 0:
+		// any number of values is okay
+	case total > p.limit:
+		err = fmt.Errorf("%d value%s specified, at most %d expected", total, plural(total), p.limit)
+	}
+	if err == nil {
+		val := reflValue(p.target)
+		if total > val.Len() {
+			// grow the slice
+			s := reflect.MakeSlice(val.Type(), total, total)
+			// no need to copy since no way to skip over existing values
+			// do it anyway in just in case (e.g. extract values by splitting and skipping)
+			reflect.Copy(s, val)
+			val.Set(s)
+		}
+		// scan all values
+		for i, value := range values {
+			if err = p.assignIndexed(value, p.count+i, p.target); err != nil {
+				break
+			}
+		}
+		p.count = total
+	}
+	return err
+}
+
+// parseMapValues assigns values to a map target.
+// The target must be a Map.
+func (p *Param) parseMapValues(values []string) error {
+	v := reflValue(p.target)
+	t := v.Type()
+	keyType := t.Key()
+	valType := t.Elem()
+
+	var err error
+	bytes := bytes.Buffer{}
+	for _, s := range values {
+		bytes.WriteString(s)
+		bytes.WriteRune(' ') // join with a blank
+	}
+
+	nvp := newNameValParser(p.dict, bytes.Bytes())
+	for {
+		n, v, e := nvp.next()
+		if e != nil {
+			return e
+		}
+		if n == nil && v == nil {
+			break
+		}
+		// standalone values: assume empty string keys
+		if n == nil {
+			n = &symval{resolved: true, s: ""}
+		}
+		if err = convertKeyValue(n.s, v.s, keyType, valType, p.target); err != nil {
+			break
+		}
+		p.count++
 	}
 	return err
 }
@@ -176,11 +233,20 @@ func (p *Param) split(value string) []string {
 	return p.splitter.Split(value, -1)
 }
 
-// assign converts value and assigns it to target. It does it with a custom
-// scanner if defined for the parameter.
+// assign converts value and assigns it to target. It uses a custom scanner if
+// defined for the parameter.
 func (p *Param) assign(value string, target interface{}) error {
 	if p.scan != nil {
 		return p.scan(value, target)
 	}
-	return typescan(value, target)
+	return convertValue(value, target)
+}
+
+// assignIndexed converts value and assigns it to the i-th element of target. It
+// uses a custom scanner if defined for the parameter.
+func (p *Param) assignIndexed(value string, i int, target interface{}) error {
+	if p.scan != nil {
+		return p.scan(value, reflElementAddr(i, reflValue(target)))
+	}
+	return convertValue(value, reflElementAddr(i, reflValue(target)))
 }

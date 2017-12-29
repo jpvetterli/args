@@ -58,11 +58,14 @@ func NewParser() *Parser {
 // When target points to an array, the parameter takes a number of values
 // exactly equal to its length. When target points to a slice, it takes a number
 // of values not exceeding its capacity, unless the capacity is zero, which is
-// interpreted as no limit. It is the only Parser method which can officially
-// panic. It panics if the name is already used, if the name contains a
-// character other than a letter, a digit, a hyphen or an underscore, if the
-// target is not a pointer, or if the target is already assigned to another
-// parameter.
+// interpreted as no limit. When target points to a map, it takes an arbitrary
+// number of key-value pairs separated by the same special character used as
+// separator between parameter names and values.
+//
+// Def is the only Parser method which panics when it detects an error. It
+// panics if the name is already used, if the name contains a character other
+// than a letter, a digit, a hyphen or an underscore, if the target is not a
+// pointer, or if the target is already assigned to another parameter.
 func (a *Parser) Def(name string, target interface{}) *Param {
 
 	// many functions rely on target being a pointer (see refl*)
@@ -428,8 +431,9 @@ func newNameValParser(p *Parser, input []byte) nameValParser {
 }
 
 // next returns a name symval, a value symval, and an error. The name can be
-// nil. All nil indicate the end of the input. When the method returns a non nil
-// error, name and value are nil.
+// nil. The value cannot be nil when the name is not nil. All results nil
+// indicate the end of the input. When the method returns a non nil error, name
+// and value are nil.
 func (nvp *nameValParser) next() (*symval, *symval, error) {
 
 	var name *symval
