@@ -191,11 +191,6 @@ func (p *Param) parseSliceValues(values []string) error {
 // parseMapValues assigns values to a map target.
 // The target must be a Map.
 func (p *Param) parseMapValues(values []string) error {
-	v := reflValue(p.target)
-	t := v.Type()
-	keyType := t.Key()
-	valType := t.Elem()
-
 	var err error
 	bytes := bytes.Buffer{}
 	for _, s := range values {
@@ -216,7 +211,7 @@ func (p *Param) parseMapValues(values []string) error {
 		if n == nil {
 			n = &symval{resolved: true, s: ""}
 		}
-		if err = convertKeyValue(n.s, v.s, keyType, valType, p.target); err != nil {
+		if err = convertKeyValue(n.s, v.s, p.target); err != nil {
 			break
 		}
 		p.count++

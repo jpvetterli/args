@@ -1199,6 +1199,16 @@ func TestTargetMapAnoynmous(t *testing.T) {
 		t.Error(err.Error())
 	}
 
+	if err := matchResult(
+		a.Parse("foo = 3 bar = 4"),
+		func() error {
+			if len(m) != 2 || m["foo"] != 3 || m["bar"] != 4 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
 }
 
 // panicHandler triggers a testing error if panic message differs from expected

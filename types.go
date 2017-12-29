@@ -21,12 +21,15 @@ func convertValue(value string, target interface{}) error {
 	return nil
 }
 
-// convertKeyValue converts key and value to the types specified and assigns the
-// converted  key and value to the map at target.
-func convertKeyValue(key, value string, keyType, valType reflect.Type, target interface{}) error {
+// convertKeyValue converts and sets key and value of a map target.
+func convertKeyValue(key, value string, target interface{}) error {
 	if reflect.ValueOf(target).Kind() != reflect.Ptr {
 		return fmt.Errorf(`target for key "%s" and value "%s" is not a pointer`, key, value)
 	}
+	targetValue := reflValue(target)
+	t := targetValue.Type()
+	keyType := t.Key()
+	valType := t.Elem()
 	k, err := convert(key, keyType)
 	if err != nil {
 		return fmt.Errorf(`key cannot be converted: %v`, err)
@@ -35,7 +38,7 @@ func convertKeyValue(key, value string, keyType, valType reflect.Type, target in
 	if err != nil {
 		return fmt.Errorf(`value for key "%s" cannot be converted: %v`, key, err)
 	}
-	reflValue(target).SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+	targetValue.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 	return nil
 }
 

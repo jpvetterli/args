@@ -343,6 +343,16 @@ func (a *Parser) isStandaloneBoolParameter(value *symval) bool {
 	return false
 }
 
+// getAnonymousMapParameter returns *Param of anonymous map if defined, else nil
+func (a *Parser) getAnonymousMapParameter() *Param {
+	if p, ok := a.params[""]; ok {
+		if reflValue(p.target).Kind() == reflect.Map {
+			return p
+		}
+	}
+	return nil
+}
+
 // setValue adds value to symbol table or sets parameter value
 func (a *Parser) setValue(name, value *symval) error {
 
@@ -368,6 +378,9 @@ func (a *Parser) setValue(name, value *symval) error {
 				return err
 			}
 		} else {
+			if p := a.getAnonymousMapParameter(); p != nil {
+				return convertKeyValue(name.s, value.s, p.target)
+			}
 			return fmt.Errorf(`parameter not defined: "%s"`, name.s)
 		}
 	}
