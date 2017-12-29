@@ -313,7 +313,7 @@ func (a *Parser) parse(b []byte) error {
 			}
 		}
 
-		// assert name != nil value != nil
+		// assert name != nil && value != nil
 
 		operator := a.operator(name.s)
 		if operator != nil {
@@ -321,29 +321,12 @@ func (a *Parser) parse(b []byte) error {
 			if err != nil {
 				return err
 			}
-			continue
-		}
-
-		if !name.resolved {
-			return fmt.Errorf(`cannot resolve name in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
-		}
-		p, ok := a.params[name.s]
-		if ok {
-			if !value.resolved {
-				if !p.verbatim {
-					if len(name.s) == 0 {
-						return fmt.Errorf(`cannot resolve standalone value "%s"`, value.s)
-					}
-					return fmt.Errorf(`cannot resolve value in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
-				}
+		} else {
+			err := a.setValue(name, value)
+			if err != nil {
+				return err
 			}
 		}
-
-		err := a.setValue(name.s, value.s)
-		if err != nil {
-			return err
-		}
-
 	}
 	return nil
 }
@@ -358,15 +341,31 @@ func (a *Parser) isStandaloneBoolParameter(value *symval) bool {
 }
 
 // setValue adds value to symbol table or sets parameter value
-func (a *Parser) setValue(name, value string) error {
-	if !a.symbols.put(name, value) {
-		if p, ok := a.params[name]; ok {
-			err := p.parseValues(p.split(value))
+func (a *Parser) setValue(name, value *symval) error {
+
+	if !name.resolved {
+		return fmt.Errorf(`cannot resolve name in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
+	}
+
+	if !a.symbols.put(name.s, value.s) {
+		if p, ok := a.params[name.s]; ok {
+
+			if !value.resolved {
+				if !p.verbatim {
+					if len(name.s) == 0 {
+						return fmt.Errorf(`cannot resolve standalone value "%s"`, value.s)
+					}
+					return fmt.Errorf(`cannot resolve value in "%s %c %s"`, name.s, a.config.GetSpecial(SpecSeparator), value.s)
+				}
+			}
+
+			err := p.parseValues(p.split(value.s))
+
 			if err != nil {
 				return err
 			}
 		} else {
-			return fmt.Errorf(`parameter not defined: "%s"`, name)
+			return fmt.Errorf(`parameter not defined: "%s"`, name.s)
 		}
 	}
 	return nil

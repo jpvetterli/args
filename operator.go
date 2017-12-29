@@ -279,7 +279,7 @@ loop:
 		capture := re.FindStringSubmatch(line)
 		if len(capture) == 3 {
 			if name, ok := kvmap[capture[1]]; ok {
-				o.parser.setValue(name, capture[2])
+				o.parser.setValue(&symval{resolved: true, s: name}, &symval{resolved: true, s: capture[2]})
 			}
 		}
 	}

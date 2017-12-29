@@ -26,6 +26,34 @@ func TestInvalidChar(t *testing.T) {
 	a.Def("a b", &i)
 }
 
+func TestArgsNotDefined(t *testing.T) {
+	a := getParser()
+	if err := matchErrorMessage(
+		a.Parse("foo=bar"),
+		`parameter not defined: "foo"`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestArgsNotResolved(t *testing.T) {
+	a := getParser()
+	if err := matchErrorMessage(
+		a.Parse("$[foo]=bar"),
+		`cannot resolve name in "$[foo] = bar"`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+	foo := ""
+	a.Def("foo", &foo)
+	if err := matchErrorMessage(
+		a.Parse("foo=$[bar]"),
+		`cannot resolve value in "foo = $[bar]"`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestArgsMisc(t *testing.T) {
 
 	a := getParser()
