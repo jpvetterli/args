@@ -1180,7 +1180,7 @@ func TestTargetMap(t *testing.T) {
 
 }
 
-func TestTargetMapAnoynmous(t *testing.T) {
+func TestTargetMapAnonymous(t *testing.T) {
 	a := getParser()
 	m := make(map[string]int)
 	a.Def("", &m)
@@ -1207,6 +1207,46 @@ func TestTargetMapAnoynmous(t *testing.T) {
 		a.Parse("foo = 3 bar = 4"),
 		func() error {
 			if len(m) != 2 || m["foo"] != 3 || m["bar"] != 4 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	foo := ""
+	delete(m, "foo")
+	delete(m, "bar")
+	a.Def("foo", &foo)
+	if err := matchResult(
+		a.Parse("foo = 3 bar = 4"),
+		func() error {
+			if foo != "3" || len(m) != 1 || m["bar"] != 4 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	foo = ""
+	delete(m, "foo")
+	delete(m, "bar")
+	if err := matchResult(
+		a.Parse("foo = 3 bar = 4 [foo=3]"),
+		func() error {
+			if foo != "3" || len(m) != 2 || m["foo"] != 3 || m["bar"] != 4 {
+				return fmt.Errorf(`unexpected value: %v`, m)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := matchResult(
+		a.Parse("42"),
+		func() error {
+			if foo != "3" || len(m) != 3 || m[""] != 42 || m["foo"] != 3 || m["bar"] != 4 {
 				return fmt.Errorf(`unexpected value: %v`, m)
 			}
 			return nil

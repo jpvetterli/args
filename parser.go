@@ -58,9 +58,15 @@ func NewParser() *Parser {
 // When target points to an array, the parameter takes a number of values
 // exactly equal to its length. When target points to a slice, it takes a number
 // of values not exceeding its capacity, unless the capacity is zero, which is
-// interpreted as no limit. When target points to a map, it takes an arbitrary
-// number of key-value pairs separated by the same special character used as
-// separator between parameter names and values.
+// interpreted as no limit.
+//
+// When target points to a map, it takes an arbitrary number of key-value pairs
+// separated by the same special character used as separator between parameter
+// names and values. When the parameter is anonymous, the outer brackets around
+// groups of key-value pairs can be omitted. This makes key-value pairs look
+// very much like parameter names and values in this case, except that keys have
+// not been defined. However, defined parameters take precedence over key-value
+// pairs.
 //
 // Def is the only Parser method which panics when it detects an error. It
 // panics if the name is already used, if the name contains a character other

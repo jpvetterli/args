@@ -92,7 +92,11 @@ func (p *Param) Doc(s ...string) *Param {
 // package. When a target is an array or slice, each value is scanned separately
 // into corresponding elements of the target. When a custom scanner function is
 // configured, any unset initial value is scanned to ensure agreement.
+// Parameters with a map target cannot set a scan function.
 func (p *Param) Scan(f func(string, interface{}) error) *Param {
+	if reflValue(p.target).Kind() == reflect.Map {
+		panic(fmt.Errorf(`cannot set a scan function for "%s" (not supported for map parameters)`, p.name))
+	}
 	p.scan = f
 	return p
 }
