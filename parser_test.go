@@ -859,6 +859,8 @@ Parameters:
            type: int, split: ---, any number of values
   array    array is a parameter taking 4 values
            type: float64, split: \s*:\s*, exactly 4 values
+  map      map is a parameter taking key-value pairs
+           type: map[string]uint8 (default: map[foo:42])
   undoc, -u
            type: float64
 
@@ -999,6 +1001,7 @@ func setupTestArgsPrintDoc(a *args.Parser) (err error) {
 	long := []string{"a1", "b2"}
 	sl := make([]int, 0)
 	var ar [4]float64
+	mp := map[string]uint8{"foo": 42}
 	var undoc float64
 	a.Doc(
 		"Usage: foo <parameters> <filename> ...",
@@ -1014,6 +1017,7 @@ func setupTestArgsPrintDoc(a *args.Parser) (err error) {
 		"It also has a long explanation.")
 	a.Def("slice", &sl).Doc("slice is a parameter taking any number of values").Split(`---`)
 	a.Def("array", &ar).Doc("array is a parameter taking 4 values").Split(`\s*:\s*`)
+	a.Def("map", &mp).Doc("map is a parameter taking key-value pairs")
 	a.Def("undoc", &undoc).Aka("-u")
 	return
 }

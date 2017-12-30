@@ -210,6 +210,11 @@ func (a *Parser) PrintDoc(w io.Writer, s ...interface{}) {
 				details += fmt.Sprintf(", split: %v", p.splitter)
 			}
 			details += fmt.Sprintf(", exactly %d value%s", p.limit, plural(p.limit))
+		case reflect.Map:
+			details = ""
+			if value.Len() > 0 {
+				details += fmt.Sprintf(" (default: %v)", value)
+			}
 		default:
 			// scalar
 			if p.limit == 0 {

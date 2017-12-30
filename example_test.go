@@ -22,6 +22,7 @@ func ExampleParser_PrintDoc() {
 	long := []string{"a1", "b2"}
 	sl := make([]int, 0)
 	var ar [4]float64
+	mp := map[string]uint8{"foo": 42}
 
 	a.Def("", &files).Aka("file").Doc("foo takes any number of file names")
 	a.Def("help", &help).Aka("-h").Doc("provide help").Opt()
@@ -31,6 +32,7 @@ func ExampleParser_PrintDoc() {
 		"It also has a long explanation.")
 	a.Def("slice", &sl).Doc("slice is a parameter taking any number of values")
 	a.Def("array", &ar).Doc("array is a parameter taking 4 values").Split(`\s*:\s*`)
+	a.Def("map", &mp).Doc("map is a parameter taking key-value pairs")
 
 	a.PrintDoc(os.Stdout, "foo")
 	a.PrintConfig(os.Stdout)
@@ -55,6 +57,8 @@ func ExampleParser_PrintDoc() {
 	//            type: int, any number of values
 	//   array    array is a parameter taking 4 values
 	//            type: float64, split: \s*:\s*, exactly 4 values
+	//   map      map is a parameter taking key-value pairs
+	//            type: map[string]uint8 (default: map[foo:42])
 	//
 	// Special characters:
 	//   $        symbol prefix

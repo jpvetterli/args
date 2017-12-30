@@ -103,7 +103,7 @@ func (p *Param) Scan(f func(string, interface{}) error) *Param {
 func (p *Param) Split(regex string) *Param {
 	k := reflValue(p.target).Kind()
 	if k != reflect.Array && k != reflect.Slice {
-		panic(fmt.Errorf(`cannot split values of parameter "%s" which is not multi-valued`, p.name))
+		panic(fmt.Errorf(`cannot split values of "%s" (only arrays and slices parameters can be split)`, p.name))
 	}
 	var err error
 	p.splitter, err = regexp.Compile(regex)

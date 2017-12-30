@@ -36,7 +36,7 @@ func TestParamNotPointer(t *testing.T) {
 
 func TestParamSplit1(t *testing.T) {
 	a := getParser()
-	defer panicHandler(`cannot split values of parameter "x" which is not multi-valued`, t)
+	defer panicHandler(`cannot split values of "x" (only arrays and slices parameters can be split)`, t)
 	var x uint8
 	a.Def("x", &x).Split("foo")
 }
