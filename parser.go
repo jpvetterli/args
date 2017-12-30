@@ -91,7 +91,7 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 	if a.operator(name) != nil {
 		panic(fmt.Errorf(`parameter name "%s" is the name of an operator`, name))
 	}
-	p := Param{dict: a, name: name, target: target}
+	p := Param{parser: a, name: name, target: target}
 
 	v := reflValue(target)
 	switch v.Kind() {

@@ -16,7 +16,7 @@ import (
 // from user input don't cause panics.  Panics are documented in the relevant
 // functions.
 type Param struct {
-	dict     *Parser
+	parser   *Parser
 	name     string // the canonical name
 	limit    int    // limit for number of values (array: exact, slice: max unless 0, scalar: 0 for opt)
 	count    int    // actual number of values seen
@@ -30,14 +30,14 @@ type Param struct {
 // Aka sets alias as a synonym for the parameter name.  Panics if alias is
 // already used as a name or synonym for any parameter.
 func (p *Param) Aka(alias string) *Param {
-	if _, ok := p.dict.params[alias]; ok {
+	if _, ok := p.parser.params[alias]; ok {
 		panic(fmt.Errorf(`synonym "%s" clashes with an existing parameter name or synonym`, alias))
 	}
 	if err := validate(alias); err != nil {
 		panic(err)
 	}
-	p.dict.params[alias] = p
-	p.dict.seq = append(p.dict.seq, alias)
+	p.parser.params[alias] = p
+	p.parser.seq = append(p.parser.seq, alias)
 	return p
 }
 
@@ -202,7 +202,7 @@ func (p *Param) parseMapValues(values []string) error {
 		bytes.WriteRune(' ') // join with a blank
 	}
 
-	nvp := newNameValParser(p.dict, bytes.Bytes())
+	nvp := newNameValParser(p.parser, bytes.Bytes())
 	for {
 		n, v, e := nvp.next()
 		if e != nil {
