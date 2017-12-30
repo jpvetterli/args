@@ -4,6 +4,10 @@
 
 * Version 1.0.0
 
+### v0.6.4 (2017-12-30)
+
+* Support parameters with a map target.
+
 ### v0.6.3 (2017-12-28)
 
 * Return error instead of panicking on invalid extractor regular expression in
