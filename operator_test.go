@@ -262,7 +262,7 @@ func TestOperatorIncludeKeys5(t *testing.T) {
 	a.Def("pw", &pw)
 	input := `include=[testdata/foreign2.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$[PASS] dump=[usr $PASS]`
 	expected := "usr u649\n$PASS R !=.sesam568\n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
@@ -300,7 +300,7 @@ func TestOperatorIncludeKeys5BOM(t *testing.T) {
 	a.Def("pw", &pw)
 	input := `include=[testdata/foreign2-BOM.test extractor=[\s*"(\S+)"\s*:\s*"(\S+)"\s*] keys=[user=usr password=$PASS]] pw=$[PASS] dump=[usr $PASS]`
 	expected := "usr u649\n$PASS R !=.sesam568\n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
@@ -336,7 +336,7 @@ func TestOperatorDump(t *testing.T) {
 	a.Def("", &empty)
 	input := "import=[$TESTENV $NONESUCH] []=[$[TESTENV]] dump=[$TESTENV $NONESUCH []]"
 	expected := "$TESTENV R value of TESTENV\n? $NONESUCH\n[] value of TESTENV\n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
@@ -353,7 +353,7 @@ func TestOperatorDumpWithCond(t *testing.T) {
 		"cond=[if=[$HOMEY] then=[$[HOMEY]] else=[dump=[comment=[$[HOMEY] not set]]]] " +
 		"dump=[$HOMEY $NONESUCH []]"
 	expected := "$[HOMEY] not set\n? $HOMEY\n? $NONESUCH\n[] \n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
@@ -374,7 +374,7 @@ func TestOperatorDumpWithCondRenamed(t *testing.T) {
 		"KONDITIONAL=[if=[$HOMEY] then=[$[HOMEY]] else=[DUMPIEREN=[comment=[$[HOMEY] not set]]]] " +
 		"DUMPIEREN=[$HOMEY $NONESUCH []]"
 	expected := "$[HOMEY] not set\n? $HOMEY\n? $NONESUCH\n[] \n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}
@@ -387,7 +387,7 @@ func TestOperatorDumpWithNoEmpty(t *testing.T) {
 	a := args.NewParser()
 	input := "dump=[[]]"
 	expected := "? []\n"
-	output, err := captureOutput(func() error { return a.Parse(input) }, os.Stderr)
+	output, err := captureStderr(func() error { return a.Parse(input) })
 	if err != nil {
 		t.Errorf("unexpected error: " + err.Error())
 	}

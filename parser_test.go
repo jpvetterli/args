@@ -1294,11 +1294,11 @@ func matchResult(err error, test func() error) error {
 	return nil
 }
 
-func captureOutput(f func() error, output *os.File) (result string, err error) {
+func captureStderr(f func() error) (result string, err error) {
 	result = ""
 	err = nil
 
-	stderr := output
+	stderr := os.Stderr
 	r, w, e := os.Pipe()
 	if e != nil {
 		err = fmt.Errorf("meta error opening pipe: %v", e)

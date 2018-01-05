@@ -4,6 +4,10 @@
 
 * Version 1.0.0
 
+### v0.6.5 (2018-01-05)
+
+* Bug fix (in a test helper).
+
 ### v0.6.4 (2017-12-30)
 
 * Support parameters with a map target.
