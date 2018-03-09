@@ -113,7 +113,7 @@ func (a *Parser) Def(name string, target interface{}) *Param {
 // result is nil unless there is an error.  The input syntax is explained in the
 // package documentation.
 func (a *Parser) ParseBytes(b []byte) error {
-	err := a.parse(b)
+	err := a.parseBytes(b)
 	if err != nil {
 		return err
 	}
@@ -296,8 +296,13 @@ func (a *Parser) PrintConfig(w io.Writer) {
 
 // helpers
 
-// parse parses b. It can be used recursively.
-func (a *Parser) parse(b []byte) error {
+// parse parses s. It can be used recursively.
+func (a *Parser) parse(s string) error {
+	return a.parseBytes([]byte(s))
+}
+
+// parseBytes parses b. It can be used recursively.
+func (a *Parser) parseBytes(b []byte) error {
 	nvp := newNameValParser(a, b)
 	var name, value *symval
 	var err error

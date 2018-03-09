@@ -85,6 +85,27 @@ func TestOperatorCond(t *testing.T) {
 	}
 }
 
+func TestOperatorCondBeforeSet(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+	if err := matchResult(
+		a.Parse("cond=[if=[$UNDEF] then=[foo=foo] else=[foo=bar]] bar=quux"),
+		func() error {
+			if foo != "bar" {
+				return fmt.Errorf(`unexpected value: foo="%s"`, foo)
+			}
+			if bar != "quux" {
+				return fmt.Errorf(`unexpected value: bar="%s"`, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestOperatorInclude(t *testing.T) {
 	a := getParser()
 	foo := ""
@@ -481,6 +502,27 @@ func TestOperatorImport(t *testing.T) {
 }
 
 func TestOperatorMacro(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar) // to test "macro before set"
+	if err := matchResult(
+		a.Parse("$macro=[foo=[number $[count]]] $count=1 macro=[$macro] bar=quux"),
+		func() error {
+			if foo != "number 1" {
+				return fmt.Errorf(`unexpected value: foo="%s"`, foo)
+			}
+			if bar != "quux" {
+				return fmt.Errorf(`unexpected value: bar="%s"`, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorMacroErrors(t *testing.T) {
 	a := args.NewParser()
 	if err := matchErrorMessage(
 		a.Parse("macro=x"),

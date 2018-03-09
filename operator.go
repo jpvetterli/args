@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 type operator interface {
@@ -59,7 +60,7 @@ func (o *condOperator) handle(value string) error {
 	local.Def("if", &condIf).Verbatim()
 	local.Def("then", &condThen).Verbatim()
 	local.Def("else", &condElse).Opt().Verbatim()
-	err := local.Parse(value)
+	err := local.parse(value)
 	if err != nil {
 		return err
 	}
@@ -77,10 +78,10 @@ func (o *condOperator) handle(value string) error {
 		cond = ok && p.count > 0
 	}
 	if cond {
-		return o.parser.Parse(condThen)
+		return o.parser.parse(condThen)
 	}
 	if len(condElse) > 0 {
-		return o.parser.Parse(condElse)
+		return o.parser.parse(condElse)
 	}
 	return nil
 }
@@ -101,7 +102,7 @@ func (o *dumpOperator) handle(value string) error {
 	var names []string
 	local.Def("", &names).Verbatim()
 	local.Def("comment", &comment).Opt().Verbatim()
-	local.Parse(value)
+	local.parse(value)
 	if len(comment) > 0 {
 		fmt.Fprintln(os.Stderr, comment)
 	}
@@ -147,7 +148,7 @@ func (o *importOperator) handle(value string) error {
 	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
-	local.Parse(value)
+	local.parse(value)
 	for _, sym := range symbols {
 		if k, isSymbol := symbol(sym, o.parser); isSymbol {
 			if v, ok := os.LookupEnv(k); ok {
@@ -192,7 +193,7 @@ func (o *includeOperator) handle(value string) error {
 	local.Def("", &filename)
 	local.Def("keys", &keys).Opt().Verbatim()
 	local.Def("extractor", &extractor).Opt()
-	local.Parse(value)
+	local.parse(value)
 
 	// detect cycles using canonical file name
 	path, err := filepath.Abs(filename)
@@ -222,7 +223,7 @@ func (o *includeOperator) handle(value string) error {
 				data = data[3:]
 			}
 		}
-		return o.parser.parse(data)
+		return o.parser.parseBytes(data)
 	}
 
 	// key selection mode
@@ -301,7 +302,7 @@ func (o *macroOperator) handle(value string) error {
 	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
-	local.Parse(value)
+	local.parse(value)
 	code := []string{}
 	for _, s := range symbols {
 		if sym, isSymbol := symbol(s, o.parser); isSymbol {
@@ -314,7 +315,8 @@ func (o *macroOperator) handle(value string) error {
 			return fmt.Errorf(`macro: "%s": symbol prefix missing (%c)`, s, o.parser.config.GetSpecial(SpecSymbolPrefix))
 		}
 	}
-	err := o.parser.ParseStrings(code)
+	// do not use ParseStrings here, it does final verification
+	err := o.parser.parse(strings.Join(code, " "))
 	if err != nil {
 		return fmt.Errorf(`macro: parsing of %v failed %v`, code, err)
 	}
@@ -332,7 +334,7 @@ func (o *resetOperator) handle(value string) error {
 	local := SubParser(o.parser)
 	var symbols []string
 	local.Def("", &symbols).Verbatim()
-	local.Parse(value)
+	local.parse(value)
 	for _, s := range symbols {
 		if sym, isSymbol := symbol(s, o.parser); isSymbol {
 			delete(o.parser.symbols.table, sym)
