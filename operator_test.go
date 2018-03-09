@@ -150,6 +150,56 @@ func TestOperatorIncludeCycle(t *testing.T) {
 	}
 }
 
+func TestOperatorIncludeMissingFile(t *testing.T) {
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+
+	if err := matchErrorMessage(
+		a.Parse("include=[testdata/missing.test]"),
+		`include: open /home/jp/go/src/github.com/jpvetterli/args/testdata/missing.test: no such file or directory`,
+	); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeEmptyFile(t *testing.T) {
+	a := getParser()
+	foo := ""
+	a.Def("foo", &foo)
+
+	if err := matchResult(
+		a.Parse("foo=bar include=[testdata/include-empty.test]"),
+		func() error {
+			if foo != "bar" {
+				return fmt.Errorf(`unexpected result: foo="%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
+func TestOperatorIncludeEmptyBOMFile(t *testing.T) {
+
+	a := getParser()
+	foo := ""
+	a.Def("foo", &foo)
+
+	if err := matchResult(
+		a.Parse("foo=bar include=[testdata/include-empty-BOM.test]"),
+		func() error {
+			if foo != "bar" {
+				return fmt.Errorf(`unexpected result: foo="%s"`, foo)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestOperatorIncludeNoExtrac(t *testing.T) {
 	a := getParser()
 	foo := ""
