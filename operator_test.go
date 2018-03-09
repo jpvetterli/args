@@ -177,12 +177,13 @@ func TestOperatorIncludeMissingFile(t *testing.T) {
 	bar := ""
 	a.Def("foo", &foo)
 	a.Def("bar", &bar)
-
-	if err := matchErrorMessage(
-		a.Parse("include=[testdata/missing.test]"),
-		`include: open /home/jp/go/src/github.com/jpvetterli/args/testdata/missing.test: no such file or directory`,
-	); err != nil {
-		t.Error(err.Error())
+	err := a.Parse("include=[testdata/missing.test]")
+	if err == nil {
+		t.Errorf("error missing")
+	} else {
+		if !strings.HasSuffix(err.Error(), "args/testdata/missing.test: no such file or directory") {
+			t.Error("unexpected error: " + err.Error())
+		}
 	}
 }
 
