@@ -200,6 +200,27 @@ func TestOperatorIncludeEmptyBOMFile(t *testing.T) {
 	}
 }
 
+func TestOperatorIncludeBeforeSet(t *testing.T) {
+
+	a := getParser()
+	foo := ""
+	bar := ""
+	a.Def("foo", &foo)
+	a.Def("bar", &bar)
+
+	if err := matchResult(
+		// a.Parse("include=[testdata/include-empty.test] foo=bar"),
+		a.Parse("include=[testdata/include-empty.test] include=[testdata/include.test]"),
+		func() error {
+			if foo != "value of foo" || bar != "value of bar" {
+				return fmt.Errorf(`unexpected results: foo="%s" bar="%s"`, foo, bar)
+			}
+			return nil
+		}); err != nil {
+		t.Error(err.Error())
+	}
+}
+
 func TestOperatorIncludeNoExtrac(t *testing.T) {
 	a := getParser()
 	foo := ""

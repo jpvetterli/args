@@ -222,7 +222,7 @@ func (o *includeOperator) handle(value string) error {
 				data = data[3:]
 			}
 		}
-		return o.parser.ParseBytes(data)
+		return o.parser.parse(data)
 	}
 
 	// key selection mode
