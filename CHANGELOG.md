@@ -4,6 +4,13 @@
 
 * Version 1.0.0
 
+### v0.6.6 (2018-03-09)
+
+* Bug fix: perform final verification for missing parameters after
+all input has been processed and not after each operator.
+
+* Bug fix: do not panic when including an empty file.
+
 ### v0.6.5 (2018-01-05)
 
 * Bug fix (in a test helper).
